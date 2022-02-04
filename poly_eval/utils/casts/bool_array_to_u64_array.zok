@@ -1,0 +1,15 @@
+import "utils/casts/u64_from_bits" as u64_from_bits
+
+// convert an array of bool to an array of u64
+// the sizes must match (one u64 for 64 bool) otherwise an error will happen
+def main<N, P>(bool[N] bits) -> u64[P]:
+	
+	assert(N == 64 * P)
+
+	u64[P] res = [0; P]
+	
+	for u32 i in 0..P do
+		res[i] = u64_from_bits(bits[64 * i..64 * (i + 1)])
+	endfor
+
+	return res

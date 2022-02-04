@@ -1,0 +1,24 @@
+import "hashes/keccak/256bit" as keccak256
+import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
+import "utils/casts/u64_to_bits" as u64_to_bits
+import "utils/pack/bool/pack128" as pack128
+
+def main(private field[4] coeffs, field x, field value, field[2] hash) -> bool:
+
+    u64[4] hash_u64 = keccak256(field_array_to_u64_array::<4,16>(coeffs))
+    bool[128] lhs = [...u64_to_bits(hash_u64[0]), ...u64_to_bits(hash_u64[1])]
+    bool[128] rhs = [...u64_to_bits(hash_u64[2]), ...u64_to_bits(hash_u64[3])]
+
+    field[2] h = [pack128(lhs), pack128(rhs)]
+
+    //assert(h[0] == hash[0])
+    //assert(h[1] == hash[1])
+
+    field xi = x
+    field v  = 0
+    for u32 i in 0..4 do
+        v = v*xi
+        v = v+coeffs[3-i]
+    endfor
+
+    return v == value

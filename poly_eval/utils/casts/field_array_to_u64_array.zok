@@ -1,0 +1,16 @@
+import "utils/pack/bool/unpack256" as unpack256
+import "./bool_array_to_u64_array" as bool_array_to_u64_array
+
+def main<N, P>(field[N] input) -> u64[P]:
+    assert(P == 4 * N)
+
+    u64[P] res = [0; P]
+
+	for u32 i in 0..N do
+		u64[4] v = bool_array_to_u64_array(unpack256(input[i]))
+		for u32 j in 0..4 do
+			res[i * 4 + j] = v[j]
+		endfor
+	endfor
+
+	return res

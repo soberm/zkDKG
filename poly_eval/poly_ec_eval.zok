@@ -1,0 +1,23 @@
+from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
+import "ecc/edwardsAdd" as edwardsAdd
+import "ecc/edwardsScalarMult" as edwardsScalarMult
+import "utils/pack/bool/unpack256" as unpack256
+
+def main(private field[16] coeffs, field x, field value) -> bool:
+    field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
+
+    field[2] v_commit = edwardsScalarMult(unpack256(value), G, BABYJUBJUB_PARAMS)
+
+    field[16][2] commits = [[0,0]; 16]
+    for u32 i in 0..16 do
+        commits[i] = edwardsScalarMult(unpack256(coeffs[i]), G, BABYJUBJUB_PARAMS)
+    endfor
+
+    field xi = x
+    field[2] v  = BABYJUBJUB_PARAMS.INFINITY
+    for u32 i in 0..16 do
+        v = edwardsScalarMult(unpack256(xi), v, BABYJUBJUB_PARAMS)
+        v = edwardsAdd(v, commits[15-i], BABYJUBJUB_PARAMS)
+    endfor
+
+  return v_commit[0] == v[0] && v_commit[1] == v[1]
