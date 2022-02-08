@@ -29,17 +29,20 @@ def hash_commits<N, P>(field[N][2] commits) -> field[2]:
 
     return [pack128(lhs), pack128(rhs)]
 
-def main(private field[128][2] commits, field x, field value) -> bool:
+def main(private field[2][2] commits, field[2] hash, field x, field value) -> field[2]:
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
 
-    field[2] hash = hash_commits::<128, 1024>(commits)
+    field[2] hashedCommits = hash_commits::<2, 16>(commits)
     field[2] v_commit = edwardsScalarMult(unpack256(value), G, BABYJUBJUB_PARAMS)
+
+    assert(hashedCommits[0] == hash[0])
+    assert(hashedCommits[1] == hash[1])
 
     field xi = x
     field[2] v  = BABYJUBJUB_PARAMS.INFINITY
-    for u32 i in 0..128 do
+    for u32 i in 0..2 do
         v = edwardsScalarMult(unpack256(xi), v, BABYJUBJUB_PARAMS)
-        v = edwardsAdd(v, commits[127-i], BABYJUBJUB_PARAMS)
+        v = edwardsAdd(v, commits[1-i], BABYJUBJUB_PARAMS)
     endfor
 
   return v_commit[0] == v[0] && v_commit[1] == v[1]

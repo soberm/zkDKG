@@ -23,9 +23,14 @@ func main() {
 
 	fmt.Printf("%+v\n", test)
 
-	priPoly := share.NewPriPoly(&suite, 5, value, suite.RandomStream())
+	priPoly := share.NewPriPoly(&suite, 2, value, suite.RandomStream())
 	fmt.Printf("%+v\n", priPoly)
 
 	pubPoly := priPoly.Commit(nil)
-	fmt.Printf("%+v\n", pubPoly.Commit().String())
+	_, commits := pubPoly.Info()
+	for _, point := range commits {
+		fmt.Printf("Commitment: %+v\n", point)
+	}
+	share := priPoly.Eval(0)
+	fmt.Printf("Share: %+v", share.V.String())
 }
