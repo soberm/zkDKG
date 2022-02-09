@@ -1,11 +1,28 @@
 from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
 import "ecc/edwardsAdd" as edwardsAdd
 import "ecc/edwardsScalarMult" as edwardsScalarMult
+import "ecc/edwardsCompress" as edwardsCompress
 import "utils/pack/bool/unpack256" as unpack256
 import "hashes/keccak/256bit" as keccak256
+import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
 import "utils/casts/u64_to_bits" as u64_to_bits
 import "utils/pack/bool/pack128" as pack128
+ 
+// def compress_commits_to_u64<N, P>(field[N][2] commits) -> u64[P]:
+    // assert(P == 4 * N)
+// 
+    // u64[P] commits_u64 = [0; P]
+    // 
+    // for u32 i in 0..N do
+        // bool[256] compressed = edwardsCompress(commits[i])
+        // u64[4] hash_u64 = bool_array_to_u64_array(compressed)
+        // for u32 j in 0..4 do
+            // commits_u64[i*4+j] = hash_u64[j]
+        // endfor
+    // endfor
+// 
+    // return commits_u64
 
 def commits_to_u64<N, P>(field[N][2] commits) -> u64[P]:
     assert(P == 8 * N)
@@ -29,7 +46,7 @@ def hash_commits<N, P>(field[N][2] commits) -> field[2]:
 
     return [pack128(lhs), pack128(rhs)]
 
-def main(private field[2][2] commits, field[2] hash, field x, field value) -> field[2]:
+def main(private field[2][2] commits, field[2] hash, field x, field value) -> bool:
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
 
     field[2] hashedCommits = hash_commits::<2, 16>(commits)
@@ -46,4 +63,3 @@ def main(private field[2][2] commits, field[2] hash, field x, field value) -> fi
     endfor
 
   return v_commit[0] == v[0] && v_commit[1] == v[1]
-  
