@@ -2,11 +2,11 @@ from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
 from "./verify_commits" import verify_commits
 import "ecc/edwardsAdd" as edwardsAdd
 
-def main(private field[2][2] commits, field[2] hash) -> field[2]:
-    assert(verify_commits::<2, 16>(commits, hash) == true)
+def main(private field[1][2] commits, field[2] hash) -> field[2]:
+    assert(verify_commits::<1, 8>(commits, hash) == true)
 
     field[2] key  = BABYJUBJUB_PARAMS.INFINITY
-    for u32 i in 0..2 do
+    for u32 i in 0..1 do
         key = edwardsAdd(key, commits[i], BABYJUBJUB_PARAMS)
     endfor
 
