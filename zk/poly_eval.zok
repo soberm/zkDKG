@@ -1,0 +1,26 @@
+from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
+from "./verify_commits" import verify_commits
+import "ecc/edwardsAdd" as edwardsAdd
+import "ecc/edwardsScalarMult" as edwardsScalarMult
+import "ecc/edwardsCompress" as edwardsCompress
+import "utils/pack/bool/unpack256" as unpack256
+import "hashes/keccak/256bit" as keccak256
+import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
+import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
+import "utils/casts/u64_to_bits" as u64_to_bits
+import "utils/pack/bool/pack128" as pack128
+ 
+def main(private field[2][2] commits, field[2] hash, field x, field value) -> bool:
+    assert(verify_commits::<2, 16>(commits, hash) == true)
+    
+    field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
+    field[2] actual = edwardsScalarMult(unpack256(value), G, BABYJUBJUB_PARAMS)
+
+    field xi = x
+    field[2] v  = BABYJUBJUB_PARAMS.INFINITY
+    for u32 i in 0..2 do
+        v = edwardsScalarMult(unpack256(xi), v, BABYJUBJUB_PARAMS)
+        v = edwardsAdd(v, commits[1-i], BABYJUBJUB_PARAMS)
+    endfor
+
+  return actual[0] == v[0] && actual[1] == v[1]
