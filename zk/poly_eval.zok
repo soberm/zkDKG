@@ -27,7 +27,7 @@ def computeSharedKey(field secretKey, field[2] pubKey, field index) -> field:
 def decrypt(field secretKey, field[2] pubKey, field index, field share) -> field:
     return share - computeSharedKey(secretKey, pubKey, index)
 
-def main(private field[2][2] commits, private field secretKey, field[2] pubKeyProofer, field[2] pubKeyDealer, field[2] hash, field x, field value) -> bool:
+def main(private field[2][2] commits, private field secretKey, field[2] pubKeyProofer, field[2] pubKeyDealer, field[2] hash, field x, field value):
     assert(verify_commits::<2, 16>(commits, hash) == true)
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
@@ -43,4 +43,5 @@ def main(private field[2][2] commits, private field secretKey, field[2] pubKeyPr
         v = edwardsAdd(v, commits[1-i], BABYJUBJUB_PARAMS)
     endfor
 
-  return actual[0] == v[0] && actual[1] == v[1]
+    assert(actual[0] != v[0] || actual[1] != v[1])
+    return
