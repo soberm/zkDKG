@@ -7,14 +7,34 @@ import "utils/pack/bool/unpack256" as unpack256
 import "hashes/keccak/256bit" as keccak256
 import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
+import "./utils/casts/u64_array_to_bool_array" as u64_array_to_bool_array
 import "utils/casts/u64_to_bits" as u64_to_bits
 import "utils/pack/bool/pack128" as pack128
- 
-def main(private field[2][2] commits, field[2] hash, field x, field value) -> bool:
+import "utils/pack/bool/pack256" as pack256
+import "ecc/proofOfOwnership" as proofOfOwnership
+
+def computeSharedKey(field secretKey, field[2] pubKey, field index) -> field:
+    
+    field[2] exchanged_key = edwardsScalarMult(unpack256(secretKey), pubKey, BABYJUBJUB_PARAMS)
+   
+    u64[4] x = bool_array_to_u64_array(unpack256(exchanged_key[0]))
+    u64[4] i = bool_array_to_u64_array(unpack256(index))
+   
+    u64[4] key_hash = keccak256([...x, ...i])
+
+    return pack256(u64_array_to_bool_array::<4,256>(key_hash))
+
+def decrypt(field secretKey, field[2] pubKey, field index, field share) -> field:
+    return share - computeSharedKey(secretKey, pubKey, index)
+
+def main(private field[2][2] commits, private field secretKey, field[2] pubKeyProofer, field[2] pubKeyDealer, field[2] hash, field x, field value) -> bool:
     assert(verify_commits::<2, 16>(commits, hash) == true)
+    assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
+
+    field share = decrypt(secretKey, pubKeyDealer, x, value)
     
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
-    field[2] actual = edwardsScalarMult(unpack256(value), G, BABYJUBJUB_PARAMS)
+    field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)
 
     field xi = x
     field[2] v  = BABYJUBJUB_PARAMS.INFINITY
