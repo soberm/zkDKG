@@ -1,8 +1,21 @@
 const hre = require("hardhat");
 
 async function main() {
+  const KEYVERIFIER = await hre.ethers.getContractFactory("KeyVerifier");
+  const keyVerifier = await KEYVERIFIER.deploy();
+
+  await keyVerifier.deployed();
+  console.log("KeyVerifier deployed to:", keyVerifier.address);
+
+  const SHAREVERIFIER = await hre.ethers.getContractFactory("ShareVerifier");
+  const shareVerifier = await SHAREVERIFIER.deploy();
+
+  await shareVerifier.deployed();
+  console.log("ShareVerifier deployed to:", shareVerifier.address);
+
+
   const ZKDKG = await hre.ethers.getContractFactory("ZKDKG");
-  const zkDKG = await ZKDKG.deploy();
+  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address);
 
   await zkDKG.deployed();
 
