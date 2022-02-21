@@ -13,13 +13,13 @@ contract ZKDKG {
     }
 
     mapping(address => Participant) public participants;
-    address[] private addresses;
+    address[] public addresses;
 
     mapping(address => bytes32) public commitmentHashes;
-    mapping(address => bytes32) private shareHashes;
-    uint256[2][] private firstCoefficients;
+    mapping(address => bytes32) public shareHashes;
+    uint256[2][] public firstCoefficients;
 
-    uint256[2] private masterPublicKey;
+    uint256[2] public masterPublicKey;
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
@@ -36,6 +36,24 @@ contract ZKDKG {
         require(participants[msg.sender].index == 0, "already registered");
         addresses.push(msg.sender);
         participants[msg.sender] = Participant(addresses.length, publicKey);
+    }
+
+    function isRegistered(address _addr) public view returns (bool) {
+        if (addresses.length == 0) return false;
+        return (addresses[participants[_addr].index] == _addr);
+    }
+
+    function countParticipants() external view returns (uint256) {
+        return addresses.length;
+    }
+
+    function findParticipantByIndex(uint256 _index)
+        public
+        view
+        returns (Participant memory)
+    {
+        require(_index >= 0 && _index < addresses.length, "not found");
+        return participants[addresses[_index]];
     }
 
     function broadcastShares(
