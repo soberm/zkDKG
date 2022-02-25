@@ -15,7 +15,7 @@ async function main() {
 
 
   const ZKDKG = await hre.ethers.getContractFactory("ZKDKG");
-  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address);
+  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, 3);
 
   await zkDKG.deployed();
 

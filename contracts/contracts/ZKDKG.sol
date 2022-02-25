@@ -20,22 +20,36 @@ contract ZKDKG {
     uint256[2][] public firstCoefficients;
 
     uint256[2] public masterPublicKey;
+    uint256 public noParticipants;
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
 
     event DisputeShare(bool result);
+    event BroadcastSharesLog(address sender, uint256 index);
+    event RegistrationEndLog();
 
-    constructor(address _shareVerifier, address _keyVerifier) {
+    constructor(
+        address _shareVerifier,
+        address _keyVerifier,
+        uint256 _noParticipants
+    ) {
         shareVerifier = ShareVerifier(_shareVerifier);
         keyVerifier = KeyVerifier(_keyVerifier);
+        noParticipants = _noParticipants;
     }
 
     function register(uint256[2] memory publicKey) public payable {
         require(msg.value == MIN_STAKE, "value too low");
-        require(participants[msg.sender].index == 0, "already registered");
-        addresses.push(msg.sender);
+        require(!isRegistered(msg.sender), "already registered");
+        require(addresses.length != noParticipants, "participants full");
+
         participants[msg.sender] = Participant(addresses.length, publicKey);
+        addresses.push(msg.sender);
+
+        if (addresses.length == noParticipants) {
+            emit RegistrationEndLog();
+        }
     }
 
     function isRegistered(address _addr) public view returns (bool) {
@@ -56,23 +70,27 @@ contract ZKDKG {
         return participants[addresses[_index]];
     }
 
+    function threshold() public view returns (uint256) {
+        return (addresses.length + 1) / 2;
+    }
+
     function broadcastShares(
         uint256[2][] memory commitments,
         uint256[] memory shares
     ) external {
         require(shares.length == addresses.length, "invalid number of shares");
-        require(participants[msg.sender].index != 0, "not registered");
-
-        uint256 threshold = (addresses.length + 1) / 2;
+        require(isRegistered(msg.sender), "not registered");
 
         require(
-            commitments.length == threshold,
+            commitments.length == threshold(),
             "invalid number of commitments"
         );
 
         firstCoefficients.push(commitments[0]);
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
         shareHashes[msg.sender] = keccak256(abi.encodePacked(shares)); // TODO: Store in merkle tree
+
+        emit BroadcastSharesLog(msg.sender, participants[msg.sender].index);
     }
 
     function disputeShare(
