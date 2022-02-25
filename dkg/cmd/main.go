@@ -2,35 +2,37 @@ package main
 
 import (
 	"client/pkg/dkg"
+	"context"
+	"flag"
 	"fmt"
-
-	"go.dedis.ch/kyber/v3/group/curve25519"
-	"go.dedis.ch/kyber/v3/share"
+	"github.com/spf13/viper"
+	"log"
 )
 
 func main() {
-	curve := &curve25519.ProjectiveCurve{}
-	curve.Init(dkg.ParamBabyJubJub(), false)
 
-	suite := curve25519.SuiteCurve25519{ProjectiveCurve: *curve}
+	configFile := flag.String("c", "./configs/config_1.json", "filename of the config file")
+	flag.Parse()
 
-	base := suite.Point().Base()
-	value := suite.Scalar().SetInt64(3)
-
-	commit := suite.Point().Mul(value, base)
-
-	test := suite.Point().Add(base, commit)
-
-	fmt.Printf("%+v\n", test)
-
-	priPoly := share.NewPriPoly(&suite, 2, value, suite.RandomStream())
-	fmt.Printf("%+v\n", priPoly)
-
-	pubPoly := priPoly.Commit(nil)
-	_, commits := pubPoly.Info()
-	for _, point := range commits {
-		fmt.Printf("Commitment: %+v\n", point)
+	viper.SetConfigFile(*configFile)
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatalf("read config: %v", err)
 	}
-	share := priPoly.Eval(0)
-	fmt.Printf("Share: %+v", share.V.String())
+
+	var config dkg.Config
+	err := viper.Unmarshal(&config)
+	if err != nil {
+		log.Fatalf("unmarshal config into struct, %v", err)
+	}
+
+	gen, err := dkg.NewDistributedKeyGenerator(&config)
+	if err != nil {
+		fmt.Printf("%v", err)
+	}
+
+	err = gen.Generate(context.Background())
+	if err != nil {
+		fmt.Printf("%v", err)
+	}
+
 }

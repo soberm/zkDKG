@@ -1,6 +1,6 @@
 package dkg
 
-import "go.dedis.ch/kyber/v3/group/curve25519"
+import "client/internal/pkg/group/curve25519"
 
 func ParamBabyJubJub() *curve25519.Param {
 	var p curve25519.Param
