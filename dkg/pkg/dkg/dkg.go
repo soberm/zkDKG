@@ -1,9 +1,11 @@
 package dkg
 
 import (
+	"bytes"
 	"client/internal/pkg/group/curve25519"
 	"context"
 	"crypto/ecdsa"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -22,8 +24,10 @@ import (
 	"go.dedis.ch/kyber/v3/suites"
 )
 
-type InputData struct {
-	PublicKey [2]*big.Int
+type DistKeyShare struct {
+	Commits     []kyber.Point
+	Share       *share.PriShare
+	PrivatePoly []kyber.Scalar
 }
 
 type Participant struct {
@@ -31,7 +35,7 @@ type Participant struct {
 	pub   kyber.Point
 }
 
-type DistributeyKeyGenerator struct {
+type DistKeyGenerator struct {
 	suite              suites.Suite
 	client             *ethclient.Client
 	chainID            *big.Int
@@ -46,7 +50,7 @@ type DistributeyKeyGenerator struct {
 	commitments        map[int][]kyber.Point
 }
 
-func NewDistributedKeyGenerator(config *Config) (*DistributeyKeyGenerator, error) {
+func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 
 	curve := &curve25519.ProjectiveCurve{}
 	curve.Init(ParamBabyJubJub(), false)
@@ -77,7 +81,7 @@ func NewDistributedKeyGenerator(config *Config) (*DistributeyKeyGenerator, error
 		return nil, fmt.Errorf("hex to scalar: %v", err)
 	}
 
-	return &DistributeyKeyGenerator{
+	return &DistKeyGenerator{
 		suite:              suite,
 		client:             client,
 		chainID:            chainID,
@@ -92,7 +96,7 @@ func NewDistributedKeyGenerator(config *Config) (*DistributeyKeyGenerator, error
 
 }
 
-func (d *DistributeyKeyGenerator) Generate(ctx context.Context) error {
+func (d *DistKeyGenerator) Generate(ctx context.Context) error {
 	log.Info("Generating distributed private key...")
 	sink := make(chan *ZKDKGContractRegistrationEndLog)
 	defer close(sink)
@@ -136,7 +140,7 @@ func (d *DistributeyKeyGenerator) Generate(ctx context.Context) error {
 	return nil
 }
 
-func (d *DistributeyKeyGenerator) Register() error {
+func (d *DistKeyGenerator) Register() error {
 
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 	if err != nil {
@@ -172,7 +176,7 @@ func (d *DistributeyKeyGenerator) Register() error {
 	return nil
 }
 
-func (d *DistributeyKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
+func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
 	sink := make(chan *ZKDKGContractBroadcastSharesLog)
 	defer close(sink)
 
@@ -202,10 +206,11 @@ func (d *DistributeyKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) e
 	}
 }
 
-func (d *DistributeyKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog) error {
+func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog) error {
 
 	accountAddress := crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey)
 	if accountAddress == broadcastSharesLog.Sender {
+		log.Infof("Ignored own share")
 		return nil
 	}
 
@@ -241,28 +246,57 @@ func (d *DistributeyKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *Z
 	i := int(d.index.Int64())
 
 	fi := d.suite.Scalar().SetBytes(shares[i].Bytes())
-	log.Infof("Received encrypted deal %v from dealer %v", fi, broadcastSharesLog.Index)
-	fi = d.DecryptDeal(fi, d.long, d.participants[int(broadcastSharesLog.Index.Int64())].pub)
-	log.Infof("Received unencrypted deal %v from dealer %v", fi, broadcastSharesLog.Index)
+
+	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.Index.Int64())].pub)
+	if err != nil {
+		return fmt.Errorf("pre shared key: %w", err)
+	}
+	fi.Sub(fi, sharedKey)
 
 	fig := d.suite.Point().Base().Mul(fi, nil)
 	pubPoly := share.NewPubPoly(d.suite, nil, commits)
 
 	sh := pubPoly.Eval(i)
-	log.Infof("Public share is %v and should be %v", fig, sh.V)
 
 	if !fig.Equal(sh.V) {
-		log.Info("Share invalid")
+		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.Index.Int64())
 		return nil
 	}
-	log.Info("Share valid")
+	log.Infof("Received valid share from dealer %v", broadcastSharesLog.Index.Int64())
 	d.shares[i] = fi
 	d.commitments[i] = commits
 
 	return nil
 }
 
-func (d *DistributeyKeyGenerator) Participants() error {
+func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
+	sh := d.suite.Scalar().Zero()
+	var pub *share.PubPoly
+	var err error
+	for i, commitments := range d.commitments {
+		sh = sh.Add(sh, d.shares[i])
+		pubPoly := share.NewPubPoly(d.suite, nil, commitments)
+		if pub == nil {
+			pub = pubPoly
+			continue
+		}
+		pub, err = pub.Add(pubPoly)
+		if err != nil {
+			return nil, fmt.Errorf("add: %w", err)
+		}
+	}
+	_, commits := pub.Info()
+	return &DistKeyShare{
+		Commits: commits,
+		Share: &share.PriShare{
+			I: int(d.index.Int64()),
+			V: sh,
+		},
+		PrivatePoly: d.priPoly.Coefficients(),
+	}, nil
+}
+
+func (d *DistKeyGenerator) Participants() error {
 
 	count, err := d.contract.CountParticipants(nil)
 	if err != nil {
@@ -289,7 +323,7 @@ func (d *DistributeyKeyGenerator) Participants() error {
 
 }
 
-func (d *DistributeyKeyGenerator) Deals() error {
+func (d *DistKeyGenerator) Deals() error {
 	threshold, err := d.contract.Threshold(nil)
 	if err != nil {
 		return fmt.Errorf("threshold: %w", err)
@@ -309,9 +343,13 @@ func (d *DistributeyKeyGenerator) Deals() error {
 	deals := make([]*big.Int, 0)
 	for i := 0; i < len(d.participants); i++ {
 		participant := d.participants[i]
-		deal := d.EncryptedDeal(participant.index)
-		log.Infof("Adding deal %v with share %v", participant.index, deal)
-		b, err := deal.MarshalBinary()
+
+		priShare, err := d.EncryptedPrivateShare(participant.index)
+		if err != nil {
+			return fmt.Errorf("encrypted private share: %w", err)
+		}
+
+		b, err := priShare.V.MarshalBinary()
 		if err != nil {
 			return fmt.Errorf("marshal binary deal: %w", err)
 		}
@@ -341,24 +379,34 @@ func (d *DistributeyKeyGenerator) Deals() error {
 	return nil
 }
 
-func (d *DistributeyKeyGenerator) EncryptedDeal(i int) kyber.Scalar {
+func (d *DistKeyGenerator) EncryptedPrivateShare(i int) (*share.PriShare, error) {
 	priShare := d.priPoly.Eval(i)
-	return priShare.V //d.EncryptDeal(priShare.V, d.long, d.participants[i].pub)
+
+	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[i].pub)
+	if err != nil {
+		return nil, fmt.Errorf("pre shared key: %w", err)
+	}
+	priShare.V.Add(priShare.V, sharedKey)
+
+	return priShare, nil
 }
 
-func (d *DistributeyKeyGenerator) EncryptDeal(share kyber.Scalar, privateKey kyber.Scalar, publicKey kyber.Point) kyber.Scalar {
+func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKey kyber.Point) (kyber.Scalar, error) {
 	pre := dhExchange(d.suite, privateKey, publicKey)
+
 	sharedKey, _ := pre.(*curve25519.ProjPoint)
 	x, _ := sharedKey.GetXY()
+	b, err := x.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("marshal binary: %w", err)
+	}
 
-	enc := d.suite.Scalar().Zero()
-	return enc.Add(x, share)
-}
+	buf := new(bytes.Buffer)
+	err = binary.Write(buf, binary.BigEndian, int64(i))
+	if err != nil {
+		return nil, fmt.Errorf("binary write: %w", err)
+	}
 
-func (d *DistributeyKeyGenerator) DecryptDeal(share kyber.Scalar, privateKey kyber.Scalar, publicKey kyber.Point) kyber.Scalar {
-	pre := dhExchange(d.suite, privateKey, publicKey)
-	sharedKey, _ := pre.(*curve25519.ProjPoint)
-	_, _ = sharedKey.GetXY()
-	//dec := d.suite.Scalar().Zero()
-	return share //dec.Sub(share, x)
+	hash := crypto.Keccak256Hash(b, buf.Bytes())
+	return d.suite.Scalar().SetBytes(hash.Bytes()), nil
 }
