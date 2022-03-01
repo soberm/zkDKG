@@ -19,6 +19,7 @@ contract ZKDKG {
     mapping(address => bytes32) public shareHashes;
     uint256[2][] public firstCoefficients;
 
+    address submitter;
     uint256[2] public masterPublicKey;
     uint256 public noParticipants;
 
@@ -118,21 +119,26 @@ contract ZKDKG {
         emit DisputeShare(result);
     }
 
-    function derivePublicKey(
-        uint256[2] memory _publicKey,
-        KeyVerifier.Proof memory proof
-    ) external {
+    function submitPublicKey(uint256[2] memory _publicKey) external {
+        require(isRegistered(msg.sender), "not registered");
+        require(submitter == address(0), "already submitted");
+        submitter = msg.sender;
+        masterPublicKey = _publicKey;
+    }
+
+    function disputePublicKey(KeyVerifier.Proof memory proof) external {
         uint256[2] memory hash = hashToUint128(
             keccak256(abi.encode(firstCoefficients))
         );
         uint256[4] memory input = [
             hash[0],
             hash[1],
-            _publicKey[0],
-            _publicKey[1]
+            masterPublicKey[0],
+            masterPublicKey[1]
         ];
         require(keyVerifier.verifyTx(proof, input), "invalid proof");
-        masterPublicKey = _publicKey;
+        delete masterPublicKey;
+        delete submitter;
     }
 
     function hashToUint128(bytes32 _hash)

@@ -153,6 +153,33 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		return nil, fmt.Errorf("dist key share: %w", err)
 	}
 
+	if int(d.index.Int64()) == 0 {
+		opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
+		if err != nil {
+			return nil, fmt.Errorf("keyed transactor with chainID: %w", err)
+		}
+		opts.GasPrice = big.NewInt(1000000000)
+
+		pub, err := PointToBig(distKeyShare.Public())
+		if err != nil {
+			return nil, fmt.Errorf("point to big: %w", err)
+		}
+		tx, err := d.contract.SubmitPublicKey(opts, pub)
+		if err != nil {
+			return nil, fmt.Errorf("submit public key: %w", err)
+		}
+
+		receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+		if err != nil {
+			return nil, fmt.Errorf("wait mined submit public key: %w", err)
+		}
+
+		if receipt.Status == types.ReceiptStatusFailed {
+			return nil, errors.New("receipt status failed")
+		}
+		log.Info("Submitted public key")
+	}
+
 	return distKeyShare, nil
 }
 

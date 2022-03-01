@@ -2,5 +2,5 @@
   "EthereumNode":       "ws://127.0.0.1:8545",
   "EthereumPrivateKey": "5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
   "DkgPrivateKey":      "147f0309b0587059c68ae43949192c6dc2222210d5105777a512dcdd373ce1ac",
-  "ContractAddress":    "0xe8D2A1E88c91DCd5433208d4152Cc4F399a7e91d"
+  "ContractAddress":    "0x40918Ba7f132E0aCba2CE4de4c4baF9BD2D7D849"
 }
