@@ -8,27 +8,19 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"go.dedis.ch/kyber/v3/share"
-	"math/big"
-	"strings"
-	"time"
-
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	log "github.com/sirupsen/logrus"
 	"go.dedis.ch/kyber/v3"
+	"go.dedis.ch/kyber/v3/share"
 	"go.dedis.ch/kyber/v3/suites"
+	"math/big"
+	"strings"
 )
-
-type DistKeyShare struct {
-	Commits     []kyber.Point
-	Share       *share.PriShare
-	PrivatePoly []kyber.Scalar
-}
 
 type Participant struct {
 	index int
@@ -48,6 +40,7 @@ type DistKeyGenerator struct {
 	priPoly            *share.PriPoly
 	shares             map[int]kyber.Scalar
 	commitments        map[int][]kyber.Point
+	done               chan bool
 }
 
 func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
@@ -92,25 +85,25 @@ func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 		participants:       make(map[int]*Participant),
 		shares:             make(map[int]kyber.Scalar),
 		commitments:        make(map[int][]kyber.Point),
+		done:               make(chan bool, 1),
 	}, nil
 
 }
 
-func (d *DistKeyGenerator) Generate(ctx context.Context) error {
+func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) {
 	log.Info("Generating distributed private key...")
-	sink := make(chan *ZKDKGContractRegistrationEndLog)
-	defer close(sink)
+	registrationEndLogs := make(chan *ZKDKGContractRegistrationEndLog)
+	defer close(registrationEndLogs)
 
 	sub, err := d.contract.WatchRegistrationEndLog(
 		&bind.WatchOpts{
 			Context: ctx,
 		},
-		sink,
+		registrationEndLogs,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer sub.Unsubscribe()
 
 	go func() {
 		if err := d.WatchBroadcastSharesLog(ctx); err != nil {
@@ -119,25 +112,48 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) error {
 	}()
 
 	if err := d.Register(); err != nil {
-		return fmt.Errorf("register: %w", err)
+		return nil, fmt.Errorf("register: %w", err)
 	}
 
 	log.Info("Waiting until registration is finished...")
-	<-sink
+	<-registrationEndLogs
+	sub.Unsubscribe()
 
 	log.Info("Retrieving all participants for this run...")
 	if err := d.Participants(); err != nil {
-		return fmt.Errorf("participants: %w", err)
+		return nil, fmt.Errorf("participants: %w", err)
+	}
+
+	distributionEndLogs := make(chan *ZKDKGContractDistributionEndLog)
+	defer close(distributionEndLogs)
+
+	sub, err = d.contract.WatchDistributionEndLog(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		distributionEndLogs,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	log.Info("Broadcasting commitments and deals...")
 	if err := d.Deals(); err != nil {
-		return fmt.Errorf("deals: %w", err)
+		return nil, fmt.Errorf("deals: %w", err)
 	}
 
-	time.Sleep(10 * time.Second)
+	log.Info("Waiting until distribution is finished...")
+	<-distributionEndLogs
+	<-d.done
+	sub.Unsubscribe()
 
-	return nil
+	log.Info("Computing distributed key share...")
+	distKeyShare, err := d.DistKeyShare()
+	if err != nil {
+		return nil, fmt.Errorf("dist key share: %w", err)
+	}
+
+	return distKeyShare, nil
 }
 
 func (d *DistKeyGenerator) Register() error {
@@ -267,8 +283,12 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		return nil
 	}
 	log.Infof("Received valid share from dealer %v", broadcastSharesLog.Index.Int64())
-	d.shares[i] = fi
-	d.commitments[i] = commits
+	d.shares[int(broadcastSharesLog.Index.Int64())] = fi
+	d.commitments[int(broadcastSharesLog.Index.Int64())] = commits
+
+	if len(d.shares) == len(d.participants) {
+		d.done <- true
+	}
 
 	return nil
 }
@@ -280,6 +300,8 @@ func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
 	for i, commitments := range d.commitments {
 		sh = sh.Add(sh, d.shares[i])
 		pubPoly := share.NewPubPoly(d.suite, nil, commitments)
+		_, c := pubPoly.Info()
+		log.Infof("Adding commitments: %v", c)
 		if pub == nil {
 			pub = pubPoly
 			continue
@@ -338,6 +360,9 @@ func (d *DistKeyGenerator) Deals() error {
 	pubPoly := d.priPoly.Commit(nil)
 
 	_, commits := pubPoly.Info()
+	d.commitments[int(d.index.Int64())] = commits
+	d.shares[int(d.index.Int64())] = d.priPoly.Eval(0).V
+
 	commitments, err := PointsToBig(commits)
 	if err != nil {
 		return fmt.Errorf("points to big: %w", err)

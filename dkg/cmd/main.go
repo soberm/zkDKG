@@ -5,8 +5,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"log"
 )
 
 func main() {
@@ -30,9 +30,10 @@ func main() {
 		fmt.Printf("%v", err)
 	}
 
-	err = gen.Generate(context.Background())
+	distKeyShare, err := gen.Generate(context.Background())
 	if err != nil {
 		fmt.Printf("%v", err)
 	}
 
+	log.Infof("Public Key: %+v", distKeyShare.Public())
 }

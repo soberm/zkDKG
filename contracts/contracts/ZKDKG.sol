@@ -28,6 +28,7 @@ contract ZKDKG {
     event DisputeShare(bool result);
     event BroadcastSharesLog(address sender, uint256 index);
     event RegistrationEndLog();
+    event DistributionEndLog();
 
     constructor(
         address _shareVerifier,
@@ -91,9 +92,13 @@ contract ZKDKG {
 
         firstCoefficients.push(commitments[0]);
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
-        shareHashes[msg.sender] = keccak256(abi.encodePacked(shares)); // TODO: Store in merkle tree
+        shareHashes[msg.sender] = keccak256(abi.encodePacked(shares));
 
         emit BroadcastSharesLog(msg.sender, participants[msg.sender].index);
+
+        if (firstCoefficients.length == noParticipants) {
+            emit DistributionEndLog();
+        }
     }
 
     function disputeShare(
