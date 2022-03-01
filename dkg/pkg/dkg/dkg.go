@@ -210,7 +210,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	accountAddress := crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey)
 	if accountAddress == broadcastSharesLog.Sender {
-		log.Infof("Ignored own share")
+		log.Infof("Ignored own broadcast")
 		return nil
 	}
 
@@ -244,8 +244,12 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	}
 
 	i := int(d.index.Int64())
+	j := i
+	if i > int(broadcastSharesLog.Index.Int64()) {
+		j -= 1
+	}
 
-	fi := d.suite.Scalar().SetBytes(shares[i].Bytes())
+	fi := d.suite.Scalar().SetBytes(shares[j].Bytes())
 
 	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.Index.Int64())].pub)
 	if err != nil {
@@ -342,6 +346,10 @@ func (d *DistKeyGenerator) Deals() error {
 
 	deals := make([]*big.Int, 0)
 	for i := 0; i < len(d.participants); i++ {
+		if i == int(d.index.Int64()) {
+			continue
+		}
+
 		participant := d.participants[i]
 
 		priShare, err := d.EncryptedPrivateShare(participant.index)

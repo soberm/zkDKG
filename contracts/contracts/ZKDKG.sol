@@ -78,7 +78,10 @@ contract ZKDKG {
         uint256[2][] memory commitments,
         uint256[] memory shares
     ) external {
-        require(shares.length == addresses.length, "invalid number of shares");
+        require(
+            shares.length == addresses.length - 1,
+            "invalid number of shares"
+        );
         require(isRegistered(msg.sender), "not registered");
 
         require(
