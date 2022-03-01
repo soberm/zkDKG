@@ -137,9 +137,9 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		return nil, err
 	}
 
-	log.Info("Broadcasting commitments and deals...")
-	if err := d.Deals(); err != nil {
-		return nil, fmt.Errorf("deals: %w", err)
+	log.Info("Broadcasting commitments and shares...")
+	if err := d.DistributeShares(); err != nil {
+		return nil, fmt.Errorf("distribute shares: %w", err)
 	}
 
 	log.Info("Waiting until distribution is finished...")
@@ -217,6 +217,33 @@ func (d *DistKeyGenerator) Register() error {
 
 	log.Infof("Registered as participant with index %v", d.index)
 	return nil
+}
+
+func (d *DistKeyGenerator) Participants() error {
+
+	count, err := d.contract.CountParticipants(nil)
+	if err != nil {
+		return fmt.Errorf("count participants: %w", err)
+	}
+
+	for i := 0; i < int(count.Uint64()); i++ {
+		participant, err := d.contract.FindParticipantByIndex(nil, big.NewInt(int64(i)))
+		if err != nil {
+			return fmt.Errorf("find participants by index: %w", err)
+		}
+
+		log.Printf("Adding participant %+v", participant)
+
+		pub, err := BigToPoint(d.suite, participant.PublicKey)
+		if err != nil {
+			return fmt.Errorf("big to point: %w", err)
+		}
+
+		d.participants[i] = &Participant{index: i, pub: pub}
+	}
+
+	return nil
+
 }
 
 func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
@@ -349,34 +376,7 @@ func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
 	}, nil
 }
 
-func (d *DistKeyGenerator) Participants() error {
-
-	count, err := d.contract.CountParticipants(nil)
-	if err != nil {
-		return fmt.Errorf("count participants: %w", err)
-	}
-
-	for i := 0; i < int(count.Uint64()); i++ {
-		participant, err := d.contract.FindParticipantByIndex(nil, big.NewInt(int64(i)))
-		if err != nil {
-			return fmt.Errorf("find participants by index: %w", err)
-		}
-
-		log.Printf("Adding participant %+v", participant)
-
-		pub, err := BigToPoint(d.suite, participant.PublicKey)
-		if err != nil {
-			return fmt.Errorf("big to point: %w", err)
-		}
-
-		d.participants[i] = &Participant{index: i, pub: pub}
-	}
-
-	return nil
-
-}
-
-func (d *DistKeyGenerator) Deals() error {
+func (d *DistKeyGenerator) DistributeShares() error {
 	threshold, err := d.contract.Threshold(nil)
 	if err != nil {
 		return fmt.Errorf("threshold: %w", err)
@@ -396,7 +396,7 @@ func (d *DistKeyGenerator) Deals() error {
 	}
 	log.Infof("Commitments: %v", commitments)
 
-	deals := make([]*big.Int, 0)
+	shares := make([]*big.Int, 0)
 	for i := 0; i < len(d.participants); i++ {
 		if i == int(d.index.Int64()) {
 			continue
@@ -411,9 +411,9 @@ func (d *DistKeyGenerator) Deals() error {
 
 		b, err := priShare.V.MarshalBinary()
 		if err != nil {
-			return fmt.Errorf("marshal binary deal: %w", err)
+			return fmt.Errorf("marshal binary share: %w", err)
 		}
-		deals = append(deals, new(big.Int).SetBytes(b))
+		shares = append(shares, new(big.Int).SetBytes(b))
 	}
 
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
@@ -422,7 +422,7 @@ func (d *DistKeyGenerator) Deals() error {
 	}
 	opts.GasPrice = big.NewInt(1000000000)
 
-	tx, err := d.contract.BroadcastShares(opts, commitments, deals)
+	tx, err := d.contract.BroadcastShares(opts, commitments, shares)
 	if err != nil {
 		return fmt.Errorf("broadcast shares: %w", err)
 	}
