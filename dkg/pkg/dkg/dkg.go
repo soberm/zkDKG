@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	log "github.com/sirupsen/logrus"
 	"go.dedis.ch/kyber/v3"
+	"go.dedis.ch/kyber/v3/group/mod"
 	"go.dedis.ch/kyber/v3/share"
 	"go.dedis.ch/kyber/v3/suites"
 	"math/big"
@@ -29,6 +30,7 @@ type Participant struct {
 
 type DistKeyGenerator struct {
 	suite              suites.Suite
+	curveParams        *curve25519.Param
 	client             *ethclient.Client
 	chainID            *big.Int
 	contract           *ZKDKGContract
@@ -45,8 +47,9 @@ type DistKeyGenerator struct {
 
 func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 
+	param := ParamBabyJubJub()
 	curve := &curve25519.ProjectiveCurve{}
-	curve.Init(ParamBabyJubJub(), false)
+	curve.Init(param, false)
 	suite := &curve25519.SuiteCurve25519{ProjectiveCurve: *curve}
 
 	client, err := ethclient.Dial(config.EthereumNode)
@@ -76,6 +79,7 @@ func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 
 	return &DistKeyGenerator{
 		suite:              suite,
+		curveParams:        param,
 		client:             client,
 		chainID:            chainID,
 		contract:           contract,
@@ -162,7 +166,6 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 	if test.V.Equal(fig) {
 		log.Infof("Overall share is valid")
 	}
-	log.Infof("Share was %v but should be %v", fig, test.V)
 
 	if int(d.index.Int64()) == 0 {
 		opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
@@ -330,13 +333,16 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		j -= 1
 	}
 
-	fi := d.suite.Scalar().SetBytes(shares[j].Bytes())
+	//fie := d.suite.Scalar().SetBytes(shares[j].Bytes())
+
+	fie := mod.NewInt(new(big.Int).SetBytes(shares[j].Bytes()), &d.curveParams.P)
 
 	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.Index.Int64())].pub)
 	if err != nil {
 		return fmt.Errorf("pre shared key: %w", err)
 	}
-	fi.Sub(fi, sharedKey)
+
+	fi := d.suite.Scalar().Sub(fie, sharedKey)
 
 	fig := d.suite.Point().Base().Mul(fi, nil)
 	pubPoly := share.NewPubPoly(d.suite, nil, commits)
@@ -348,6 +354,12 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		return nil
 	}
 	log.Infof("Received valid share from dealer %v", broadcastSharesLog.Index.Int64())
+
+	err = d.DisputeShare(commits, d.participants[int(broadcastSharesLog.Index.Int64())].pub, int(broadcastSharesLog.Index.Int64()), fie)
+	if err != nil {
+		return fmt.Errorf("dispute share: %w", err)
+	}
+
 	d.shares[int(broadcastSharesLog.Index.Int64())] = fi
 	d.commitments[int(broadcastSharesLog.Index.Int64())] = commits
 
@@ -358,7 +370,57 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	return nil
 }
 
-func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, share kyber.Scalar) error {
+func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Point, i int, fi kyber.Scalar) error {
+
+	a, err := d.contract.Addresses(nil, big.NewInt(int64(i)))
+	if err != nil {
+		return fmt.Errorf("get address: %w", err)
+	}
+
+	commitmentsHash, err := d.contract.CommitmentHashes(nil, a)
+	if err != nil {
+		return fmt.Errorf("commitment hashes: %w", err)
+	}
+
+	hashUint128, err := d.contract.HashToUint128(nil, commitmentsHash)
+	if err != nil {
+		return fmt.Errorf("hashToUint128: %w", err)
+	}
+
+	args := make([]*big.Int, 0)
+
+	for _, commitment := range commitments {
+		c, _ := commitment.(*curve25519.ProjPoint)
+		x, y := c.GetXY()
+		args = append(args, &x.V, &y.V)
+	}
+
+	sk, _ := d.long.MarshalBinary()
+	args = append(args, new(big.Int).SetBytes(sk))
+
+	pubPoint := d.pub.(*curve25519.ProjPoint)
+	pubPointX, pubPointY := pubPoint.GetXY()
+	args = append(args, &pubPointX.V, &pubPointY.V)
+
+	pubPointReceiver := pub.(*curve25519.ProjPoint)
+	pubPointReceiverX, pubPointReceiverY := pubPointReceiver.GetXY()
+	args = append(args, &pubPointReceiverX.V, &pubPointReceiverY.V)
+
+	hash := [2]*big.Int{
+		new(big.Int).SetBytes(hashUint128[0].Bytes()),
+		new(big.Int).SetBytes(hashUint128[1].Bytes()),
+	}
+
+	index := new(big.Int).Add(d.index, big.NewInt(1))
+
+	args = append(args, hash[:]...)
+	args = append(args, index)
+
+	fiBinary, _ := fi.MarshalBinary()
+	args = append(args, new(big.Int).SetBytes(fiBinary))
+
+	log.Infof("Args: %v", args)
+
 	return nil
 }
 
@@ -461,7 +523,9 @@ func (d *DistKeyGenerator) EncryptedPrivateShare(i int) (*share.PriShare, error)
 	if err != nil {
 		return nil, fmt.Errorf("pre shared key: %w", err)
 	}
-	priShare.V.Add(priShare.V, sharedKey)
+	//priShare.V.Add(priShare.V, sharedKey)
+	sharedKey.Add(sharedKey, priShare.V)
+	priShare.V = sharedKey
 
 	return priShare, nil
 }
@@ -477,11 +541,17 @@ func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKe
 	}
 
 	buf := new(bytes.Buffer)
-	err = binary.Write(buf, binary.BigEndian, int64(i))
+	err = binary.Write(buf, binary.BigEndian, int64(i+1))
 	if err != nil {
 		return nil, fmt.Errorf("binary write: %w", err)
 	}
 
-	hash := crypto.Keccak256Hash(b, buf.Bytes())
-	return d.suite.Scalar().SetBytes(hash.Bytes()), nil
+	test := make([]byte, 32)
+	copy(test[len(test)-len(buf.Bytes()):], buf.Bytes())
+
+	hash := crypto.Keccak256Hash(b, test)
+
+	k := mod.NewInt(new(big.Int).SetBytes(hash.Bytes()), &d.curveParams.P)
+
+	return k, nil
 }
