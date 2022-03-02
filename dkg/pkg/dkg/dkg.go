@@ -153,6 +153,17 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		return nil, fmt.Errorf("dist key share: %w", err)
 	}
 
+	poly := share.NewPubPoly(d.suite, nil, distKeyShare.Commits)
+	fig := d.suite.Point().Base().Mul(distKeyShare.Share.V, nil)
+	i := int(d.index.Int64())
+
+	test := poly.Eval(i)
+
+	if test.V.Equal(fig) {
+		log.Infof("Overall share is valid")
+	}
+	log.Infof("Share was %v but should be %v", fig, test.V)
+
 	if int(d.index.Int64()) == 0 {
 		opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 		if err != nil {
@@ -347,6 +358,10 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	return nil
 }
 
+func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, share kyber.Scalar) error {
+	return nil
+}
+
 func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
 	sh := d.suite.Scalar().Zero()
 	var pub *share.PubPoly
@@ -388,7 +403,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 
 	_, commits := pubPoly.Info()
 	d.commitments[int(d.index.Int64())] = commits
-	d.shares[int(d.index.Int64())] = d.priPoly.Eval(0).V
+	d.shares[int(d.index.Int64())] = d.priPoly.Eval(int(d.index.Int64())).V
 
 	commitments, err := PointsToBig(commits)
 	if err != nil {
