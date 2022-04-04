@@ -103,16 +103,27 @@ contract ZKDKG {
     }
 
     function disputeShare(
-        address dealer,
-        uint256 share,
+        uint256 dealerIndex,
+        uint256[] memory shares,
         ShareVerifier.Proof memory proof
     ) external {
+        address dealer = addresses[dealerIndex];
+        require(
+            shareHashes[dealer] == keccak256(abi.encodePacked(shares)),
+            "invalid shares"
+        );
+
+        uint256 index = participants[msg.sender].index;
         uint256[2] memory hash = hashToUint128(commitmentHashes[dealer]);
-        uint256[5] memory input = [
+        uint256[9] memory input = [
+            participants[msg.sender].publicKey[0],
+            participants[msg.sender].publicKey[1],
+            participants[dealer].publicKey[0],
+            participants[dealer].publicKey[1],
             hash[0],
             hash[1],
-            participants[dealer].index,
-            share,
+            index,
+            shares[index],
             1
         ];
         bool result = shareVerifier.verifyTx(proof, input);

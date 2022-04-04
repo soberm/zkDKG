@@ -356,14 +356,19 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	if !pubPoly.Check(fi) {
 		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.Index.Int64())
+		err = d.DisputeShare(
+			commits,
+			d.participants[int(broadcastSharesLog.Index.Int64())].pub,
+			int(broadcastSharesLog.Index.Int64()),
+			fie,
+			shares,
+		)
+		if err != nil {
+			return fmt.Errorf("dispute share: %w", err)
+		}
 		return nil
 	}
 	log.Infof("Received valid share from dealer %v", broadcastSharesLog.Index.Int64())
-
-	err = d.DisputeShare(commits, d.participants[int(broadcastSharesLog.Index.Int64())].pub, int(broadcastSharesLog.Index.Int64()), fie)
-	if err != nil {
-		return fmt.Errorf("dispute share: %w", err)
-	}
 
 	d.shares[int(broadcastSharesLog.Index.Int64())] = fi.V
 	d.commitments[int(broadcastSharesLog.Index.Int64())] = commits
@@ -375,7 +380,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	return nil
 }
 
-func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Point, i int, fi kyber.Scalar) error {
+func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Point, i int, fi kyber.Scalar, shares []*big.Int) error {
 
 	a, err := d.contract.Addresses(nil, big.NewInt(int64(i)))
 	if err != nil {
@@ -419,17 +424,37 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 	fiBinary, _ := fi.MarshalBinary()
 	args = append(args, new(big.Int).SetBytes(fiBinary))
 
+	log.Infof("Args: %v", args)
+
 	err = d.polyProver.ComputeWitness(context.Background(), args)
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
 
-	err = d.polyProver.GenerateProof(context.Background())
+	proof, err := d.polyProver.GenerateProof(context.Background())
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
 
-	log.Infof("Args: %v", args)
+	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
+	if err != nil {
+		return fmt.Errorf("keyed transactor with chainID: %w", err)
+	}
+	opts.GasPrice = big.NewInt(1000000000)
+
+	tx, err := d.contract.DisputeShare(opts, big.NewInt(int64(i)), shares, *proof.Proof)
+	if err != nil {
+		return fmt.Errorf("dispute share: %w", err)
+	}
+
+	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	if err != nil {
+		return fmt.Errorf("wait mined register: %w", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		return errors.New("receipt status failed")
+	}
 
 	return nil
 }
