@@ -5,4 +5,5 @@ type Config struct {
 	EthereumPrivateKey string
 	DkgPrivateKey      string
 	ContractAddress    string
+	MountSource        string
 }

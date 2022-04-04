@@ -30,6 +30,7 @@ type Participant struct {
 
 type DistKeyGenerator struct {
 	suite              suites.Suite
+	polyProver         *Prover
 	curveParams        *curve25519.Param
 	client             *ethclient.Client
 	chainID            *big.Int
@@ -77,8 +78,14 @@ func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 		return nil, fmt.Errorf("hex to scalar: %v", err)
 	}
 
+	polyProver, err := NewProver(config.MountSource)
+	if err != nil {
+		return nil, fmt.Errorf("prover: %v", err)
+	}
+
 	return &DistKeyGenerator{
 		suite:              suite,
+		polyProver:         polyProver,
 		curveParams:        param,
 		client:             client,
 		chainID:            chainID,
@@ -411,6 +418,16 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 
 	fiBinary, _ := fi.MarshalBinary()
 	args = append(args, new(big.Int).SetBytes(fiBinary))
+
+	err = d.polyProver.ComputeWitness(context.Background(), args)
+	if err != nil {
+		return fmt.Errorf("compute witness: %w", err)
+	}
+
+	err = d.polyProver.GenerateProof(context.Background())
+	if err != nil {
+		return fmt.Errorf("compute witness: %w", err)
+	}
 
 	log.Infof("Args: %v", args)
 
