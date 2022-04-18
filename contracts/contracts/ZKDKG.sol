@@ -114,7 +114,12 @@ contract ZKDKG {
         );
 
         uint256 index = participants[msg.sender].index;
+        if (index > dealerIndex) {
+            index--;
+        }
+
         uint256[2] memory hash = hashToUint128(commitmentHashes[dealer]);
+
         uint256[9] memory input = [
             participants[msg.sender].publicKey[0],
             participants[msg.sender].publicKey[1],
