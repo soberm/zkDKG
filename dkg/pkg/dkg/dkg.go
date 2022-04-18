@@ -416,10 +416,8 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 		new(big.Int).SetBytes(commitmentsHash[16:]),
 	}
 
-	index := new(big.Int).Add(d.index, big.NewInt(1))
-
 	args = append(args, hash[:]...)
-	args = append(args, index)
+	args = append(args, d.index)
 
 	fiBinary, _ := fi.MarshalBinary()
 	args = append(args, new(big.Int).SetBytes(fiBinary))
