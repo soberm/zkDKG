@@ -98,8 +98,8 @@ func (point *PairingG2Point) UnmarshalJSON(b []byte) error {
 	x, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[0][0], "0x"), 16)
 	xi, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[0][1], "0x"), 16)
 
-	y, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[0][0], "0x"), 16)
-	yi, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[0][1], "0x"), 16)
+	y, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[1][0], "0x"), 16)
+	yi, _ := new(big.Int).SetString(strings.TrimPrefix(hexValues[1][1], "0x"), 16)
 
 	point.X = [2]*big.Int{x, xi}
 	point.Y = [2]*big.Int{y, yi}
