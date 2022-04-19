@@ -1,15 +1,14 @@
 from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
-from "./verify_commits" import verify_commits
 import "ecc/edwardsAdd" as edwardsAdd
 import "ecc/edwardsScalarMult" as edwardsScalarMult
-import "ecc/edwardsCompress" as edwardsCompress
 import "utils/pack/bool/unpack256" as unpack256
 import "hashes/keccak/256bit" as keccak256
+import "./utils/casts/commits_to_u64" as commits_to_u64
 import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
+import "./utils/casts/field_to_u64_array" as field_to_u64_array
 import "./utils/casts/u64_array_to_bool_array" as u64_array_to_bool_array
-import "utils/casts/u64_to_bits" as u64_to_bits
-import "utils/pack/bool/pack128" as pack128
+import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
 import "utils/pack/bool/pack256" as pack256
 import "ecc/proofOfOwnership" as proofOfOwnership
 
@@ -27,9 +26,18 @@ def computeSharedKey(field secretKey, field[2] pubKey, field index) -> field:
 def decrypt(field secretKey, field[2] pubKey, field index, field share) -> field:
     return share - computeSharedKey(secretKey, pubKey, index)
 
-def main(private field[2][2] commits, private field secretKey, field[2] pubKeyProofer, field[2] pubKeyDealer, field[2] hash, field x, field value) -> bool:
-    assert(verify_commits::<2, 16>(commits, hash) == true)
+def main(private field[2][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDealer, private field x, private field value, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
+
+    u64[4] commitsHash = keccak256(commits_to_u64::<_,16>(commits))
+
+    assert(hash == u64_array_to_field_array::<_,2>(keccak256([
+        ...commitsHash,
+        ...field_array_to_u64_array::<_,8>(pubKeyProofer),
+        ...field_array_to_u64_array::<_,8>(pubKeyDealer),
+        ...field_to_u64_array(x),
+        ...field_to_u64_array(value)
+    ])))
 
     field share = decrypt(secretKey, pubKeyDealer, x, value)
     

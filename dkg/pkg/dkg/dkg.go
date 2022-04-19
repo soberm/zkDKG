@@ -8,6 +8,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,8 +22,6 @@ import (
 	"go.dedis.ch/kyber/v3/group/mod"
 	"go.dedis.ch/kyber/v3/share"
 	"go.dedis.ch/kyber/v3/suites"
-	"math/big"
-	"strings"
 )
 
 type Participant struct {
@@ -411,18 +412,37 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 	pubPointReceiverX, pubPointReceiverY := pubPointReceiver.GetXY()
 	args = append(args, &pubPointReceiverX.V, &pubPointReceiverY.V)
 
-	hash := [2]*big.Int{
-		new(big.Int).SetBytes(commitmentsHash[:16]),
-		new(big.Int).SetBytes(commitmentsHash[16:]),
-	}
-
-	args = append(args, hash[:]...)
-	args = append(args, d.index)
+	index := new(big.Int).Add(d.index, big.NewInt(1))
+	args = append(args, index)
 
 	fiBinary, _ := fi.MarshalBinary()
-	args = append(args, new(big.Int).SetBytes(fiBinary))
+	fiBig := new(big.Int).SetBytes(fiBinary)
+	args = append(args, fiBig)
 
-	log.Infof("Args: %v", args)
+	buf := make([]byte, 32)
+
+	hashInput := make([]byte, 0)
+	hashInput = append(hashInput, commitmentsHash[:]...)
+
+	hashInput = append(hashInput, pubPointX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubPointY.V.FillBytes(buf)...)
+
+	hashInput = append(hashInput, pubPointReceiverX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubPointReceiverY.V.FillBytes(buf)...)
+
+	hashInput = append(hashInput, index.FillBytes(buf)...)
+
+	hashInput = append(hashInput, fiBig.FillBytes(buf)...)
+
+	rawHash := crypto.Keccak256(hashInput)
+	hash := []*big.Int{
+		new(big.Int).SetBytes(rawHash[:16]),
+		new(big.Int).SetBytes(rawHash[16:]),
+	}
+
+	args = append(args, hash...)
+
+	log.Infof("Args: %x", args)
 
 	err = d.polyProver.ComputeWitness(context.Background(), args)
 	if err != nil {
@@ -523,6 +543,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 		if err != nil {
 			return fmt.Errorf("marshal binary share: %w", err)
 		}
+
 		shares = append(shares, new(big.Int).SetBytes(b))
 	}
 

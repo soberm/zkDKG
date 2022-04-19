@@ -27,7 +27,7 @@ contract ZKDKG {
     KeyVerifier private keyVerifier;
 
     event DisputeShare(bool result);
-    event BroadcastSharesLog(address sender, uint256 index);
+    event BroadcastSharesLog(address sender, uint256 broadcasterIndex);
     event RegistrationEndLog();
     event DistributionEndLog();
 
@@ -113,22 +113,30 @@ contract ZKDKG {
             "invalid shares"
         );
 
-        uint256 index = participants[msg.sender].index;
-        if (index > dealerIndex) {
-            index--;
+        uint256 disputerIndex = participants[msg.sender].index;
+        if (disputerIndex > dealerIndex) {
+            disputerIndex--;
         }
 
-        uint256[2] memory hash = hashToUint128(commitmentHashes[dealer]);
+        uint oneBasedDisputerIndex = participants[msg.sender].index + 1;
 
-        uint256[9] memory input = [
-            participants[msg.sender].publicKey[0],
-            participants[msg.sender].publicKey[1],
-            participants[dealer].publicKey[0],
-            participants[dealer].publicKey[1],
+        uint256[2] memory hash = hashToUint128(
+            keccak256(
+                bytes.concat(
+                    commitmentHashes[dealer],
+                    bytes32(participants[msg.sender].publicKey[0]),
+                    bytes32(participants[msg.sender].publicKey[1]),
+                    bytes32(participants[dealer].publicKey[0]),
+                    bytes32(participants[dealer].publicKey[1]),
+                    bytes32(oneBasedDisputerIndex),
+                    bytes32(shares[disputerIndex])
+                )
+            )
+        );
+
+        uint256[3] memory input = [
             hash[0],
             hash[1],
-            index,
-            shares[index],
             1
         ];
         bool result = shareVerifier.verifyTx(proof, input);

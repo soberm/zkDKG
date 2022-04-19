@@ -1,0 +1,15 @@
+import "./field_array_to_u64_array" as field_array_to_u64_array
+
+def main<N, P>(field[N][2] commits) -> u64[P]:
+    assert(P == 8 * N)
+
+    u64[P] commits_u64 = [0; P]
+    
+    for u32 i in 0..N do
+        u64[8] hash_u64 = field_array_to_u64_array::<_,8>(commits[i])
+        for u32 j in 0..8 do
+            commits_u64[i*8+j] = hash_u64[j]
+        endfor
+    endfor
+
+    return commits_u64

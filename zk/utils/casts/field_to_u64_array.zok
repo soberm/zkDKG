@@ -1,0 +1,5 @@
+import "utils/pack/bool/unpack256" as unpack256
+import "./bool_array_to_u64_array" as bool_array_to_u64_array
+
+def main(field f) -> u64[4]:
+    return bool_array_to_u64_array::<_,4>(unpack256(f))
