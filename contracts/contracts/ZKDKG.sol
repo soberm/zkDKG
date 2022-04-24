@@ -6,6 +6,7 @@ import "./KeyVerifier.sol";
 
 contract ZKDKG {
     uint16 public constant KEY_DISPUTE_PERIOD = 0 minutes;
+    uint16 public constant SHARES_DISPUTE_PERIOD = 0 minutes;
     uint256 public constant MIN_STAKE = 0 ether;
 
     struct Participant {
@@ -28,6 +29,7 @@ contract ZKDKG {
     KeyVerifier private keyVerifier;
 
     uint64 private keyDisputableUntil;
+    uint64 private sharesDisputableUntil;
 
     event DisputeShare(bool result);
     event BroadcastSharesLog(address sender, uint256 broadcasterIndex);
@@ -101,6 +103,7 @@ contract ZKDKG {
         emit BroadcastSharesLog(msg.sender, participants[msg.sender].index);
 
         if (firstCoefficients.length == noParticipants) {
+            sharesDisputableUntil = uint64(block.timestamp) + SHARES_DISPUTE_PERIOD;
             emit DistributionEndLog();
         }
     }
@@ -115,6 +118,10 @@ contract ZKDKG {
             shareHashes[dealer] == keccak256(abi.encodePacked(shares)),
             "invalid shares"
         );
+
+        if (firstCoefficients.length == noParticipants) {
+            require(block.timestamp <= sharesDisputableUntil, "dispute period has expired");
+        }
 
         uint256 disputerIndex = participants[msg.sender].index;
         if (disputerIndex > dealerIndex) {
