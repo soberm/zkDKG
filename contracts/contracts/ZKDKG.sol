@@ -5,6 +5,7 @@ import "./ShareVerifier.sol";
 import "./KeyVerifier.sol";
 
 contract ZKDKG {
+    uint16 public constant KEY_DISPUTE_PERIOD = 0 minutes;
     uint256 public constant MIN_STAKE = 0 ether;
 
     struct Participant {
@@ -25,6 +26,8 @@ contract ZKDKG {
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
+
+    uint64 private keyDisputableUntil;
 
     event DisputeShare(bool result);
     event BroadcastSharesLog(address sender, uint256 broadcasterIndex);
@@ -148,9 +151,12 @@ contract ZKDKG {
         require(submitter == address(0), "already submitted");
         submitter = msg.sender;
         masterPublicKey = _publicKey;
+        keyDisputableUntil = uint64(block.timestamp) + KEY_DISPUTE_PERIOD;
     }
 
     function disputePublicKey(KeyVerifier.Proof memory proof) external {
+        require(block.timestamp <= keyDisputableUntil, "dispute period has expired");
+
         uint256[2] memory hash = hashToUint128(
             keccak256(abi.encode(firstCoefficients))
         );
