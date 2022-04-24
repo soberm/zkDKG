@@ -337,13 +337,13 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	i := int(d.index.Int64())
 	j := i
-	if i > int(broadcastSharesLog.Index.Int64()) {
+	if i > int(broadcastSharesLog.BroadcasterIndex.Int64()) {
 		j -= 1
 	}
 
 	fie := mod.NewInt(new(big.Int).SetBytes(shares[j].Bytes()), &d.curveParams.P)
 
-	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.Index.Int64())].pub)
+	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub)
 	if err != nil {
 		return fmt.Errorf("pre shared key: %w", err)
 	}
@@ -356,11 +356,11 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	pubPoly := share.NewPubPoly(d.suite, nil, commits)
 
 	if !pubPoly.Check(fi) {
-		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.Index.Int64())
+		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.BroadcasterIndex.Int64())
 		err = d.DisputeShare(
 			commits,
-			d.participants[int(broadcastSharesLog.Index.Int64())].pub,
-			int(broadcastSharesLog.Index.Int64()),
+			d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub,
+			int(broadcastSharesLog.BroadcasterIndex.Int64()),
 			fie,
 			shares,
 		)
@@ -369,10 +369,10 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		}
 		return nil
 	}
-	log.Infof("Received valid share from dealer %v", broadcastSharesLog.Index.Int64())
+	log.Infof("Received valid share from dealer %v", broadcastSharesLog.BroadcasterIndex.Int64())
 
-	d.shares[int(broadcastSharesLog.Index.Int64())] = fi.V
-	d.commitments[int(broadcastSharesLog.Index.Int64())] = commits
+	d.shares[int(broadcastSharesLog.BroadcasterIndex.Int64())] = fi.V
+	d.commitments[int(broadcastSharesLog.BroadcasterIndex.Int64())] = commits
 
 	if len(d.shares) == len(d.participants) {
 		d.done <- true
@@ -552,6 +552,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
 	}
 	opts.GasPrice = big.NewInt(1000000000)
+	opts.GasLimit = 200000
 
 	tx, err := d.contract.BroadcastShares(opts, commitments, shares)
 	if err != nil {
