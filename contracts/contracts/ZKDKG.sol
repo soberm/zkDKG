@@ -47,9 +47,17 @@ contract ZKDKG {
     }
 
     function register(uint256[2] memory publicKey) public payable {
+
         require(msg.value == MIN_STAKE, "value too low");
-        require(!isRegistered(msg.sender), "already registered");
-        require(addresses.length != noParticipants, "participants full");
+
+        if (masterPublicKey[0] == 0 && masterPublicKey[1] == 0) {
+            require(!isRegistered(msg.sender), "already registered");
+            require(addresses.length != noParticipants, "participants full");
+        } else {
+            require(block.timestamp > keyDisputableUntil, "dispute period still ongoing");
+
+            reset();
+        }
 
         participants[msg.sender] = Participant(addresses.length, publicKey);
         addresses.push(msg.sender);
@@ -154,6 +162,7 @@ contract ZKDKG {
     }
 
     function submitPublicKey(uint256[2] memory _publicKey) external {
+        require(block.timestamp > sharesDisputableUntil, "dispute period still ongoing");
         require(isRegistered(msg.sender), "not registered");
         require(submitter == address(0), "already submitted");
         submitter = msg.sender;
@@ -187,5 +196,23 @@ contract ZKDKG {
         uint128 lhs = uint128(hash >> 128);
         uint128 rhs = uint128(hash);
         return [uint256(lhs), uint256(rhs)];
+    }
+
+    function reset() private {
+        for (uint i = 0; i < addresses.length; i++) {
+            address addr = addresses[i];
+
+            delete participants[addr];
+            delete shareHashes[addr];
+            delete commitmentHashes[addr];
+        }
+
+        delete addresses;
+        delete firstCoefficients;
+        delete masterPublicKey;
+
+        delete submitter;
+        delete keyDisputableUntil;
+        delete sharesDisputableUntil;
     }
 }
