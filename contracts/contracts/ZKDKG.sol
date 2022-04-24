@@ -14,6 +14,14 @@ contract ZKDKG {
         uint256[2] publicKey;
     }
 
+    enum Phases {
+        REGISTER,
+        BROADCAST_SUBMIT,
+        BROADCAST_DISPUTE,
+        PK_DISPUTE
+    }
+    Phases public phase;
+
     mapping(address => Participant) public participants;
     address[] public addresses;
 
@@ -50,49 +58,31 @@ contract ZKDKG {
 
         require(msg.value == MIN_STAKE, "value too low");
 
-        if (masterPublicKey[0] == 0 && masterPublicKey[1] == 0) {
+        if (phase == Phases.REGISTER) {
             require(!isRegistered(msg.sender), "already registered");
-            require(addresses.length != noParticipants, "participants full");
-        } else {
+        } else if (phase == Phases.PK_DISPUTE) {
             require(block.timestamp > keyDisputableUntil, "dispute period still ongoing");
-
             reset();
+        } else {
+            revert("registration phase is over");
         }
 
         participants[msg.sender] = Participant(addresses.length, publicKey);
         addresses.push(msg.sender);
 
         if (addresses.length == noParticipants) {
+            phase = Phases.BROADCAST_SUBMIT;
+
             emit RegistrationEndLog();
         }
     }
 
-    function isRegistered(address _addr) public view returns (bool) {
-        if (addresses.length == 0) return false;
-        return (addresses[participants[_addr].index] == _addr);
-    }
-
-    function countParticipants() external view returns (uint256) {
-        return addresses.length;
-    }
-
-    function findParticipantByIndex(uint256 _index)
-        public
-        view
-        returns (Participant memory)
-    {
-        require(_index >= 0 && _index < addresses.length, "not found");
-        return participants[addresses[_index]];
-    }
-
-    function threshold() public view returns (uint256) {
-        return (addresses.length + 1) / 2;
-    }
-
+    // FIXME One account can call this multiple times
     function broadcastShares(
         uint256[2][] memory commitments,
         uint256[] memory shares
     ) external {
+        require(phase == Phases.BROADCAST_SUBMIT, "not in broadcast phase");
         require(
             shares.length == addresses.length - 1,
             "invalid number of shares"
@@ -112,6 +102,8 @@ contract ZKDKG {
 
         if (firstCoefficients.length == noParticipants) {
             sharesDisputableUntil = uint64(block.timestamp) + SHARES_DISPUTE_PERIOD;
+            phase = Phases.BROADCAST_DISPUTE;
+
             emit DistributionEndLog();
         }
     }
@@ -127,7 +119,7 @@ contract ZKDKG {
             "invalid shares"
         );
 
-        if (firstCoefficients.length == noParticipants) {
+        if (phase >= Phases.BROADCAST_DISPUTE) {
             require(block.timestamp <= sharesDisputableUntil, "dispute period has expired");
         }
 
@@ -162,15 +154,18 @@ contract ZKDKG {
     }
 
     function submitPublicKey(uint256[2] memory _publicKey) external {
+        require(phase == Phases.BROADCAST_DISPUTE, "not in submission phase");
         require(block.timestamp > sharesDisputableUntil, "dispute period still ongoing");
         require(isRegistered(msg.sender), "not registered");
-        require(submitter == address(0), "already submitted");
+
         submitter = msg.sender;
         masterPublicKey = _publicKey;
         keyDisputableUntil = uint64(block.timestamp) + KEY_DISPUTE_PERIOD;
+        phase = Phases.PK_DISPUTE;
     }
 
     function disputePublicKey(KeyVerifier.Proof memory proof) external {
+        require(phase == Phases.PK_DISPUTE, "not in dispute phase");
         require(block.timestamp <= keyDisputableUntil, "dispute period has expired");
 
         uint256[2] memory hash = hashToUint128(
@@ -185,17 +180,6 @@ contract ZKDKG {
         require(keyVerifier.verifyTx(proof, input), "invalid proof");
         delete masterPublicKey;
         delete submitter;
-    }
-
-    function hashToUint128(bytes32 _hash)
-        public
-        pure
-        returns (uint256[2] memory)
-    {
-        uint256 hash = uint256(_hash);
-        uint128 lhs = uint128(hash >> 128);
-        uint128 rhs = uint128(hash);
-        return [uint256(lhs), uint256(rhs)];
     }
 
     function reset() private {
@@ -214,5 +198,39 @@ contract ZKDKG {
         delete submitter;
         delete keyDisputableUntil;
         delete sharesDisputableUntil;
+        delete phase;
+    }
+
+    function isRegistered(address _addr) public view returns (bool) {
+        if (addresses.length == 0) return false;
+        return (addresses[participants[_addr].index] == _addr);
+    }
+
+    function countParticipants() external view returns (uint256) {
+        return addresses.length;
+    }
+
+    function findParticipantByIndex(uint256 _index)
+        public
+        view
+        returns (Participant memory)
+    {
+        require(_index >= 0 && _index < addresses.length, "not found");
+        return participants[addresses[_index]];
+    }
+
+    function threshold() public view returns (uint256) {
+        return (addresses.length + 1) / 2;
+    }
+
+    function hashToUint128(bytes32 _hash)
+        public
+        pure
+        returns (uint256[2] memory)
+    {
+        uint256 hash = uint256(_hash);
+        uint128 lhs = uint128(hash >> 128);
+        uint128 rhs = uint128(hash);
+        return [uint256(lhs), uint256(rhs)];
     }
 }
