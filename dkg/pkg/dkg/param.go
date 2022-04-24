@@ -2,9 +2,10 @@ package dkg
 
 import "client/internal/pkg/group/curve25519"
 
+// Specification: https://eips.ethereum.org/EIPS/eip-2494
 func ParamBabyJubJub() *curve25519.Param {
 	var p curve25519.Param
-	p.Name = "BabyJubJub"
+	p.Name = "Baby Jubjub"
 	p.P.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
 	p.Q.SetString("21888242871839275222246405745257275088614511777268538073601725287587578984328", 10)
 	p.R = 8
