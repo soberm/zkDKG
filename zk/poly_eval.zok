@@ -23,10 +23,10 @@ def computeSharedKey(field secretKey, field[2] pubKey, field index) -> field:
 
     return pack256(u64_array_to_bool_array::<4,256>(key_hash))
 
-def decrypt(field secretKey, field[2] pubKey, field index, field share) -> field:
-    return share - computeSharedKey(secretKey, pubKey, index)
+def decrypt(field secretKey, field[2] pubKey, field index, field encryptedShare) -> field:
+    return encryptedShare - computeSharedKey(secretKey, pubKey, index)
 
-def main(private field[2][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDealer, private field x, private field value, field[2] hash) -> bool:
+def main(private field[2][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDealer, private field index, private field encryptedShare, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
     u64[4] commitsHash = keccak256(commits_to_u64::<_,16>(commits))
@@ -35,20 +35,27 @@ def main(private field[2][2] commits, private field secretKey, private field[2] 
         ...commitsHash,
         ...field_array_to_u64_array::<_,8>(pubKeyProofer),
         ...field_array_to_u64_array::<_,8>(pubKeyDealer),
-        ...field_to_u64_array(x),
-        ...field_to_u64_array(value)
+        ...field_to_u64_array(index),
+        ...field_to_u64_array(encryptedShare)
     ])))
 
-    field share = decrypt(secretKey, pubKeyDealer, x, value)
+    /*
+     * The shares on the blockchain are encrypted through one-time pad encryption,
+     * using a combination of DH key exchange and keccak256 to generate a single-use key.
+     */
+    field share = decrypt(secretKey, pubKeyDealer, index, encryptedShare)
     
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
     field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)
 
-    field xi = x
-    field[2] v  = BABYJUBJUB_PARAMS.INFINITY
+    /*
+     * Evaluate the public commitment polynomial at the given index.
+     * Analogous to https://github.com/dedis/kyber/blob/1a3d86c4f61cd7ac92bf14509aa887c728a5fe2a/share/poly.go#L339
+     */
+    field[2] expected  = BABYJUBJUB_PARAMS.INFINITY
     for u32 i in 0..2 do
-        v = edwardsScalarMult(unpack256(xi), v, BABYJUBJUB_PARAMS)
-        v = edwardsAdd(v, commits[1-i], BABYJUBJUB_PARAMS)
+        expected = edwardsScalarMult(unpack256(index), expected, BABYJUBJUB_PARAMS)
+        expected = edwardsAdd(expected, commits[1-i], BABYJUBJUB_PARAMS)
     endfor
 
-    return actual[0] != v[0] || actual[1] != v[1]
+    return actual[0] != expected[0] || actual[1] != expected[1]
