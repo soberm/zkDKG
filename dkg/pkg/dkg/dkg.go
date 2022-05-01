@@ -343,7 +343,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	fie := mod.NewInt(new(big.Int).SetBytes(shares[j].Bytes()), &d.curveParams.P)
 
-	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub)
+	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub, commits)
 	if err != nil {
 		return fmt.Errorf("pre shared key: %w", err)
 	}
@@ -534,7 +534,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 
 		participant := d.participants[i]
 
-		priShare, err := d.EncryptedPrivateShare(participant.index)
+		priShare, err := d.EncryptedPrivateShare(participant.index, commits)
 		if err != nil {
 			return fmt.Errorf("encrypted private share: %w", err)
 		}
@@ -571,10 +571,10 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	return nil
 }
 
-func (d *DistKeyGenerator) EncryptedPrivateShare(i int) (*share.PriShare, error) {
+func (d *DistKeyGenerator) EncryptedPrivateShare(i int, commits []kyber.Point) (*share.PriShare, error) {
 	priShare := d.priPoly.Eval(i)
 
-	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[i].pub)
+	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[i].pub, commits)
 	if err != nil {
 		return nil, fmt.Errorf("pre shared key: %w", err)
 	}
@@ -585,7 +585,7 @@ func (d *DistKeyGenerator) EncryptedPrivateShare(i int) (*share.PriShare, error)
 	return priShare, nil
 }
 
-func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKey kyber.Point) (kyber.Scalar, error) {
+func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKey kyber.Point, commits []kyber.Point) (kyber.Scalar, error) {
 	pre := dhExchange(d.suite, privateKey, publicKey)
 
 	sharedKey, _ := pre.(*curve25519.ProjPoint)
@@ -601,6 +601,19 @@ func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKe
 		return nil, fmt.Errorf("binary write: %w", err)
 	}
 
-	hash := crypto.Keccak256Hash(b, PadTrimLeft(buf.Bytes(), 32))
+	commitsBin := make([]byte, 0, len(commits) * 64)
+	for i := range commits {
+		bin, err := commits[i].MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("marshal commit: %w", err)
+		}
+		commitsBin = append(commitsBin, bin...)
+	}
+
+	hash := crypto.Keccak256Hash(
+		b,
+		PadTrimLeft(buf.Bytes(), 32),
+		commitsBin,
+	)
 	return mod.NewInt(new(big.Int).SetBytes(hash.Bytes()), &d.curveParams.P), nil
 }
