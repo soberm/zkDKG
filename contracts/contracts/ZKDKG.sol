@@ -6,7 +6,7 @@ import "./KeyVerifier.sol";
 
 contract ZKDKG {
     uint16 public constant KEY_DISPUTE_PERIOD = 0 minutes;
-    uint16 public constant SHARES_BROADCAST_PERIOD = 0 minutes;
+    uint16 public constant SHARES_BROADCAST_PERIOD = 10 seconds;
     uint16 public constant SHARES_DISPUTE_PERIOD = 0 minutes;
 
     uint256 public constant MIN_STAKE = 0 ether;
