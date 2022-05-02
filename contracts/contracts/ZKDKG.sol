@@ -6,7 +6,9 @@ import "./KeyVerifier.sol";
 
 contract ZKDKG {
     uint16 public constant KEY_DISPUTE_PERIOD = 0 minutes;
+    uint16 public constant SHARES_BROADCAST_PERIOD = 0 minutes;
     uint16 public constant SHARES_DISPUTE_PERIOD = 0 minutes;
+
     uint256 public constant MIN_STAKE = 0 ether;
 
     struct Participant {
@@ -37,6 +39,7 @@ contract ZKDKG {
     KeyVerifier private keyVerifier;
 
     uint64 private keyDisputableUntil;
+    uint64 private sharesBroadcastableUntil;
     uint64 private sharesDisputableUntil;
 
     event DisputeShare(bool result);
@@ -71,6 +74,7 @@ contract ZKDKG {
         addresses.push(msg.sender);
 
         if (addresses.length == noParticipants) {
+            sharesBroadcastableUntil = uint64(block.timestamp) + SHARES_BROADCAST_PERIOD;
             phase = Phases.BROADCAST_SUBMIT;
 
             emit RegistrationEndLog();
@@ -82,7 +86,9 @@ contract ZKDKG {
         uint256[2][] memory commitments,
         uint256[] memory shares
     ) external {
-        require(phase == Phases.BROADCAST_SUBMIT, "not in broadcast phase");
+        require(phase >= Phases.BROADCAST_SUBMIT, "broadcast period has not started yet");
+        require(block.timestamp <= sharesBroadcastableUntil, "broadcast period has expired");
+
         require(
             shares.length == addresses.length - 1,
             "invalid number of shares"
