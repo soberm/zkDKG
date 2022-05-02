@@ -119,15 +119,14 @@ contract ZKDKG {
         uint256[] memory shares,
         ShareVerifier.Proof memory proof
     ) external {
+        require(phase >= Phases.BROADCAST_DISPUTE, "dispute period has not started yet");
+        require(block.timestamp <= sharesDisputableUntil, "dispute period has expired");
+
         address dealer = addresses[dealerIndex];
         require(
             shareHashes[dealer] == keccak256(abi.encodePacked(shares)),
             "invalid shares"
         );
-
-        if (phase >= Phases.BROADCAST_DISPUTE) {
-            require(block.timestamp <= sharesDisputableUntil, "dispute period has expired");
-        }
 
         uint256 disputerIndex = participants[msg.sender].index;
         if (disputerIndex > dealerIndex) {
