@@ -1,16 +1,18 @@
-from "ecc/babyjubjubParams" import BabyJubJubParams, BABYJUBJUB_PARAMS
-import "ecc/edwardsAdd" as edwardsAdd
-import "ecc/edwardsScalarMult" as edwardsScalarMult
-import "utils/pack/bool/unpack256" as unpack256
-import "hashes/keccak/256bit" as keccak256
-import "./utils/casts/commits_to_u64" as commits_to_u64
+import "./ecc/edwardsOnCurve" as edwardsOnCurve
 import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
+import "./utils/casts/commits_to_u64" as commits_to_u64
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
 import "./utils/casts/field_to_u64_array" as field_to_u64_array
 import "./utils/casts/u64_array_to_bool_array" as u64_array_to_bool_array
 import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
-import "utils/pack/bool/pack256" as pack256
+
+from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS
 import "ecc/proofOfOwnership" as proofOfOwnership
+import "ecc/edwardsAdd" as edwardsAdd
+import "ecc/edwardsScalarMult" as edwardsScalarMult
+import "hashes/keccak/256bit" as keccak256
+import "utils/pack/bool/pack256" as pack256
+import "utils/pack/bool/unpack256" as unpack256
 
 def computeSharedKey(field secretKey, field[2] pubKey, field index, field[2][2] commits) -> field:
     
@@ -26,6 +28,19 @@ def computeSharedKey(field secretKey, field[2] pubKey, field index, field[2][2] 
 
 def decrypt(field secretKey, field[2] pubKey, field index, field[2][2] commits, field encryptedShare) -> field:
     return encryptedShare - computeSharedKey(secretKey, pubKey, index, commits)
+
+/*
+ * Evaluate the public commitment polynomial at the given index.
+ * Analogous to https://github.com/dedis/kyber/blob/1a3d86c4f61cd7ac92bf14509aa887c728a5fe2a/share/poly.go#L339
+ */
+def evalPubPoly(field index, field[2][2] commits) -> field[2]:
+    field[2] expected = BABYJUBJUB_PARAMS.INFINITY
+    for u32 i in 0..2 do
+        expected = edwardsScalarMult(unpack256(index), expected, BABYJUBJUB_PARAMS)
+        expected = edwardsAdd(expected, commits[1-i], BABYJUBJUB_PARAMS)
+    endfor
+
+    return expected
 
 def main(private field[2][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDealer, private field index, private field encryptedShare, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
@@ -49,14 +64,12 @@ def main(private field[2][2] commits, private field secretKey, private field[2] 
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
     field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)
 
-    /*
-     * Evaluate the public commitment polynomial at the given index.
-     * Analogous to https://github.com/dedis/kyber/blob/1a3d86c4f61cd7ac92bf14509aa887c728a5fe2a/share/poly.go#L339
-     */
-    field[2] expected  = BABYJUBJUB_PARAMS.INFINITY
+    bool onCurve = true
     for u32 i in 0..2 do
-        expected = edwardsScalarMult(unpack256(index), expected, BABYJUBJUB_PARAMS)
-        expected = edwardsAdd(expected, commits[1-i], BABYJUBJUB_PARAMS)
+        onCurve = onCurve && edwardsOnCurve(commits[i], BABYJUBJUB_PARAMS)
     endfor
+
+    // Point (0, 0) is not a point on the curve, so the comparison afterwards can't ever be true
+    field[2] expected = onCurve ? evalPubPoly(index, commits) : [0, 0]
 
     return actual[0] != expected[0] || actual[1] != expected[1]
