@@ -442,7 +442,7 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 
 	args = append(args, hash...)
 
-	log.Infof("Args: %x", args)
+	log.Infof("Args: %d", args)
 
 	err = d.polyProver.ComputeWitness(context.Background(), args)
 	if err != nil {
