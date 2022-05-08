@@ -55,21 +55,23 @@ def main(private field[2][2] commits, private field secretKey, private field[2] 
         ...field_to_u64_array(encryptedShare)
     ])))
 
+    bool pkOnCurve = edwardsOnCurve(pubKeyDealer, BABYJUBJUB_PARAMS)
+
     /*
      * The shares on the blockchain are encrypted through one-time pad encryption,
      * using a combination of DH key exchange and keccak256 to generate a single-use key.
      */
-    field share = decrypt(secretKey, pubKeyDealer, index, commits, encryptedShare)
+    field share = pkOnCurve ? decrypt(secretKey, pubKeyDealer, index, commits, encryptedShare) : 0
     
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
     field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)
 
-    bool onCurve = true
+    bool commitsOnCurve = true
     for u32 i in 0..2 do
-        onCurve = onCurve && edwardsOnCurve(commits[i], BABYJUBJUB_PARAMS)
+        commitsOnCurve = commitsOnCurve && edwardsOnCurve(commits[i], BABYJUBJUB_PARAMS)
     endfor
 
     // Point (0, 0) is not a point on the curve, so the comparison afterwards can't ever be true
-    field[2] expected = onCurve ? evalPubPoly(index, commits) : [0, 0]
+    field[2] expected = commitsOnCurve ? evalPubPoly(index, commits) : [0, 0]
 
     return actual[0] != expected[0] || actual[1] != expected[1]
