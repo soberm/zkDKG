@@ -81,7 +81,16 @@ func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args [
 		if err != nil {
 			return fmt.Errorf("waiting for container: %w", err)
 		}
-	case <-statusCh:
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			var msg string
+			if status.Error == nil {
+				msg = fmt.Sprintf("exit code %d", status.StatusCode)
+			} else {
+				msg = status.Error.Message
+			}
+			return fmt.Errorf("running container: %s", msg)
+		}
 	}
 
 	if err := p.dc.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{}); err != nil {
@@ -126,7 +135,16 @@ func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof
 		if err != nil {
 			return nil, fmt.Errorf("waiting for container: %w", err)
 		}
-	case <-statusCh:
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			var msg string
+			if status.Error == nil {
+				msg = fmt.Sprintf("exit code %d", status.StatusCode)
+			} else {
+				msg = status.Error.Message
+			}
+			return nil, fmt.Errorf("running container: %s", msg)
+		}
 	}
 
 	if err := p.dc.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{}); err != nil {
