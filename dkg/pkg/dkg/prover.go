@@ -4,16 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"io/ioutil"
 	"math/big"
 	"path"
 	"strings"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 )
 
+type ProofType string
 const (
+	EvalPolyProof ProofType = "poly_eval"
+	KeyDerivProof ProofType = "key_deriv"
+
 	zokratesImage = "zokrates/zokrates"
 	mountTarget   = "/home/zokrates/build"
 )
@@ -36,21 +41,23 @@ func NewProver(mountSource string) (*Prover, error) {
 	}, nil
 }
 
-func (p *Prover) ComputeWitness(ctx context.Context, args []*big.Int) error {
+func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args []*big.Int) error {
 	var a []string
 	for _, arg := range args {
 		a = append(a, arg.String())
 	}
 
+	basePath := path.Join("./build", string(proofType))
+
 	cmd := []string{
 		"zokrates",
 		"compute-witness",
 		"-o",
-		"./build/witness",
+		path.Join(basePath, "witness"),
 		"-i",
-		"./build/out",
+		path.Join(basePath, "out"),
 		"-s",
-		"./build/abi.json",
+		path.Join(basePath, "abi.json"),
 		"-a",
 	}
 	resp, err := p.dc.ContainerCreate(ctx, &container.Config{
@@ -83,20 +90,22 @@ func (p *Prover) ComputeWitness(ctx context.Context, args []*big.Int) error {
 	return nil
 }
 
-func (p *Prover) GenerateProof(ctx context.Context) (*Proof, error) {
+func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof, error) {
+	basePath := path.Join("./build", string(proofType))
+
 	resp, err := p.dc.ContainerCreate(ctx, &container.Config{
 		Image: zokratesImage,
 		Cmd: []string{
 			"zokrates",
 			"generate-proof",
 			"-i",
-			"./build/out",
+			path.Join(basePath, "out"),
 			"--proof-path",
-			"./build/proof.json",
+			path.Join(basePath, "proof.json"),
 			"-p",
-			"./build/proving.key",
+			path.Join(basePath, "proving.key"),
 			"-w",
-			"./build/witness",
+			path.Join(basePath, "witness"),
 		},
 	}, &container.HostConfig{
 		Binds: []string{
@@ -124,7 +133,7 @@ func (p *Prover) GenerateProof(ctx context.Context) (*Proof, error) {
 		return nil, fmt.Errorf("remove container: %w", err)
 	}
 
-	file, err := ioutil.ReadFile(path.Join(p.mountSource, "proof.json"))
+	file, err := ioutil.ReadFile(path.Join(p.mountSource, string(proofType), "proof.json"))
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}

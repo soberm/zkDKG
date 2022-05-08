@@ -6,9 +6,15 @@ import (
 	"strings"
 )
 
+type ZKProof struct {
+	A PairingG1Point
+	B PairingG2Point
+	C PairingG1Point
+}
+
 type Proof struct {
 	Inputs []*big.Int
-	Proof  *ShareVerifierProof
+	Proof  *ZKProof
 }
 
 func (proof *Proof) UnmarshalJSON(b []byte) error {
@@ -32,18 +38,18 @@ func (proof *Proof) UnmarshalJSON(b []byte) error {
 
 	proof.Inputs = inputs
 
-	var shareVerifierProof *ShareVerifierProof
-	err = json.Unmarshal(*objMap["proof"], &shareVerifierProof)
+	var zkProof *ZKProof
+	err = json.Unmarshal(*objMap["proof"], &zkProof)
 	if err != nil {
 		return err
 	}
 
-	proof.Proof = shareVerifierProof
+	proof.Proof = zkProof
 
 	return nil
 }
 
-func (proof *ShareVerifierProof) UnmarshalJSON(b []byte) error {
+func (proof *ZKProof) UnmarshalJSON(b []byte) error {
 	var objMapProof map[string]*json.RawMessage
 	err := json.Unmarshal(b, &objMapProof)
 	if err != nil {

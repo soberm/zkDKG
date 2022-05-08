@@ -175,6 +175,11 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		log.Infof("Overall share is valid")
 	}
 
+	pub, err := PointToBig(distKeyShare.Public())
+	if err != nil {
+		return nil, fmt.Errorf("point to big: %w", err)
+	}
+
 	if int(d.index.Int64()) == 0 {
 		opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 		if err != nil {
@@ -182,10 +187,6 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		}
 		opts.GasPrice = big.NewInt(1000000000)
 
-		pub, err := PointToBig(distKeyShare.Public())
-		if err != nil {
-			return nil, fmt.Errorf("point to big: %w", err)
-		}
 		tx, err := d.contract.SubmitPublicKey(opts, pub)
 		if err != nil {
 			return nil, fmt.Errorf("submit public key: %w", err)
@@ -200,6 +201,8 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 			return nil, errors.New("receipt status failed")
 		}
 		log.Info("Submitted public key")
+	} else {
+		d.WatchPublicKeySubmissionLog(ctx, pub)
 	}
 
 	return distKeyShare, nil
@@ -381,6 +384,130 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	return nil
 }
 
+func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk [2]*big.Int) error {
+	sink := make(chan *ZKDKGContractPublicKeySubmission)
+	defer close(sink)
+
+	sub, err := d.contract.WatchPublicKeySubmission(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		sink,
+	)
+	if err != nil {
+		return err
+	}
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case event := <-sink:
+			log.Infof("Handling public key submission log...")
+			if err := d.HandlePublicKeySubmissionLog(event, pk); err != nil {
+				log.Errorf("Handling public key submission log failed: %v", err)
+			}
+		case err = <-sub.Err():
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGContractPublicKeySubmission, computedPk [2]*big.Int) error {
+	submissionTx, _, err := d.client.TransactionByHash(context.Background(), pkSubmissionLog.Raw.TxHash)
+	if err != nil {
+		return fmt.Errorf("transaction by hash: %w", err)
+	}
+
+	txData := submissionTx.Data()
+	a, err := abi.JSON(strings.NewReader(ZKDKGContractABI))
+	if err != nil {
+		return fmt.Errorf("abi from json: %w", err)
+	}
+
+	method, err := a.MethodById(txData[:4])
+	if err != nil {
+		return fmt.Errorf("method by id: %w", err)
+	}
+
+	inputs, err := method.Inputs.Unpack(txData[4:])
+	if err != nil {
+		return fmt.Errorf("unpack inputs: %w", err)
+	}
+
+	submittedPk := inputs[0].([2]*big.Int)
+
+	if computedPk[0].Cmp(submittedPk[0]) == 0 && computedPk[1].Cmp(submittedPk[1]) == 0 {
+		log.Infoln("Public key valid")
+		return nil
+	}
+
+	log.Infoln("Submitted public key invalid")
+	
+	args := make([]*big.Int, 0)
+
+	firstCoefficients := make([]byte, 0)
+	for i := 0; i < len(d.participants); i++ {
+		firstCoefficient := d.commitments[i][0]
+
+		bin, err := firstCoefficient.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal binary coefficient: %w", err)
+		}
+
+		point, err := PointToBig(firstCoefficient)
+		if err != nil {
+			return fmt.Errorf("coefficient to big: %w", err)
+		}
+		firstCoefficients = append(firstCoefficients, bin...)
+		args = append(args, point[:]...)
+	}
+
+	args = append(args, submittedPk[:]...)
+
+	rawHash := crypto.Keccak256(firstCoefficients)
+	hash := []*big.Int{
+		new(big.Int).SetBytes(rawHash[:16]),
+		new(big.Int).SetBytes(rawHash[16:]),
+	}
+
+	args = append(args, hash...)
+
+	log.Infof("Args: %d", args)
+
+	if err := d.polyProver.ComputeWitness(context.Background(), KeyDerivProof, args); err != nil {
+		return fmt.Errorf("compute witness for public key proof: %w", err)
+	}
+
+	proof, err := d.polyProver.GenerateProof(context.Background(), KeyDerivProof)
+	if err != nil {
+		return fmt.Errorf("generate proof for public key: %w", err)
+	}
+
+	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
+	if err != nil {
+		return fmt.Errorf("keyed transactor with chainID: %w", err)
+	}
+	opts.GasPrice = big.NewInt(1000000000)
+
+	disputeTx, err := d.contract.DisputePublicKey(opts, KeyVerifierProof(*proof.Proof))
+	if err != nil {
+		return fmt.Errorf("dispute public key: %w", err)
+	}
+
+	receipt, err := bind.WaitMined(context.Background(), d.client, disputeTx)
+	if err != nil {
+		return fmt.Errorf("wait mined register: %w", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		return errors.New("receipt status failed")
+	}
+
+	return nil;
+}
+
 func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Point, i int, fi kyber.Scalar, shares []*big.Int) error {
 
 	a, err := d.contract.Addresses(nil, big.NewInt(int64(i)))
@@ -444,12 +571,12 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 
 	log.Infof("Args: %d", args)
 
-	err = d.polyProver.ComputeWitness(context.Background(), args)
+	err = d.polyProver.ComputeWitness(context.Background(), EvalPolyProof, args)
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
 
-	proof, err := d.polyProver.GenerateProof(context.Background())
+	proof, err := d.polyProver.GenerateProof(context.Background(), EvalPolyProof)
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
@@ -460,7 +587,7 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 	}
 	opts.GasPrice = big.NewInt(1000000000)
 
-	tx, err := d.contract.DisputeShare(opts, big.NewInt(int64(i)), shares, *proof.Proof)
+	tx, err := d.contract.DisputeShare(opts, big.NewInt(int64(i)), shares, ShareVerifierProof(*proof.Proof))
 	if err != nil {
 		return fmt.Errorf("dispute share: %w", err)
 	}

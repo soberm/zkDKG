@@ -5,7 +5,7 @@ import "./ShareVerifier.sol";
 import "./KeyVerifier.sol";
 
 contract ZKDKG {
-    uint16 public constant KEY_DISPUTE_PERIOD = 0 minutes;
+    uint16 public constant KEY_DISPUTE_PERIOD = 30 seconds;
     uint16 public constant SHARES_BROADCAST_PERIOD = 10 seconds;
     uint16 public constant SHARES_DISPUTE_PERIOD = 0 minutes;
 
@@ -46,6 +46,7 @@ contract ZKDKG {
     event BroadcastSharesLog(address sender, uint256 broadcasterIndex);
     event RegistrationEndLog();
     event DistributionEndLog();
+    event PublicKeySubmission();
 
     constructor(
         address _shareVerifier,
@@ -167,6 +168,8 @@ contract ZKDKG {
         masterPublicKey = _publicKey;
         keyDisputableUntil = uint64(block.timestamp) + KEY_DISPUTE_PERIOD;
         phase = Phases.PK_DISPUTE;
+
+        emit PublicKeySubmission();
     }
 
     function disputePublicKey(KeyVerifier.Proof memory proof) external {
@@ -174,17 +177,23 @@ contract ZKDKG {
         require(block.timestamp <= keyDisputableUntil, "dispute period has expired");
 
         uint256[2] memory hash = hashToUint128(
-            keccak256(abi.encode(firstCoefficients))
+            keccak256(abi.encodePacked(firstCoefficients))
         );
-        uint256[4] memory input = [
+
+        uint256[5] memory input = [
+            masterPublicKey[0],
+            masterPublicKey[1],
             hash[0],
             hash[1],
-            masterPublicKey[0],
-            masterPublicKey[1]
+            1
         ];
         require(keyVerifier.verifyTx(proof, input), "invalid proof");
         delete masterPublicKey;
         delete submitter;
+        delete keyDisputableUntil;
+
+        phase = Phases.BROADCAST_DISPUTE;
+
     }
 
     function reset() private {
