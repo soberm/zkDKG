@@ -244,6 +244,10 @@ func (c *curve) encodePoint(x, y *mod.Int) []byte {
 func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
 	x.SetBytes(bb[:32])
 	y.SetBytes(bb[32:])
+
+	if !c.onCurve(x, y) {
+		return errors.New("invalid point")
+	}
 	return nil
 }
 

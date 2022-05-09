@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "./ShareVerifier.sol";
 import "./KeyVerifier.sol";
+import "./ShareInputVerifier.sol";
 
 contract ZKDKG {
     uint16 public constant KEY_DISPUTE_PERIOD = 30 seconds;
@@ -37,12 +38,13 @@ contract ZKDKG {
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
+    ShareInputVerifier private shareInputVerifier;
 
     uint64 private keyDisputableUntil;
     uint64 private sharesBroadcastableUntil;
     uint64 private sharesDisputableUntil;
 
-    event DisputeShare(bool result);
+    event DisputeShare();
     event BroadcastSharesLog(address sender, uint256 broadcasterIndex);
     event RegistrationEndLog();
     event DistributionEndLog();
@@ -51,10 +53,12 @@ contract ZKDKG {
     constructor(
         address _shareVerifier,
         address _keyVerifier,
+        address _shareInputVerifier,
         uint256 _noParticipants
     ) {
         shareVerifier = ShareVerifier(_shareVerifier);
         keyVerifier = KeyVerifier(_keyVerifier);
+        shareInputVerifier = ShareInputVerifier(_shareInputVerifier);
         noParticipants = _noParticipants;
     }
 
@@ -155,8 +159,34 @@ contract ZKDKG {
             hash[1],
             1
         ];
-        bool result = shareVerifier.verifyTx(proof, input);
-        emit DisputeShare(result);
+        require(shareVerifier.verifyTx(proof, input), "invalid proof");
+        emit DisputeShare();
+    }
+
+    function disputeShareInput(
+        address dealerAddress,
+        ShareInputVerifier.Proof memory proof
+    ) external {
+        require(phase >= Phases.BROADCAST_DISPUTE, "dispute period has not started yet");
+        require(block.timestamp <= sharesDisputableUntil, "dispute period has expired");
+
+        uint256[2] memory hash = hashToUint128(
+            keccak256(
+                bytes.concat(
+                    commitmentHashes[dealerAddress],
+                    bytes32(participants[dealerAddress].publicKey[0]),
+                    bytes32(participants[dealerAddress].publicKey[1])
+                )
+            )
+        );
+
+        uint256[3] memory input = [
+            hash[0],
+            hash[1],
+            0
+        ];
+        require(shareInputVerifier.verifyTx(proof, input), "invalid proof");
+        emit DisputeShare();
     }
 
     function submitPublicKey(uint256[2] memory _publicKey) external {
@@ -193,7 +223,6 @@ contract ZKDKG {
         delete keyDisputableUntil;
 
         phase = Phases.BROADCAST_DISPUTE;
-
     }
 
     function reset() private {

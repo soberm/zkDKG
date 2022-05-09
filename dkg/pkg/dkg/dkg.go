@@ -330,12 +330,20 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		return fmt.Errorf("unpack inputs: %w", err)
 	}
 
+	pubKeyDealer := d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub
+
 	commitments := inputs[0].([][2]*big.Int)
 	shares := inputs[1].([]*big.Int)
 
 	commits, err := BigToPoints(d.suite, commitments)
 	if err != nil {
-		return fmt.Errorf("big to points: %w", err)
+		log.Infof("Received invalid commits from dealer %d, disputing...", broadcastSharesLog.BroadcasterIndex)
+
+		if err := d.DisputeShareInput(commitments, pubKeyDealer, broadcastSharesLog.Sender); err != nil {
+			return fmt.Errorf("dispute share input: %w", err)
+		}
+
+		return nil
 	}
 
 	i := int(d.index.Int64())
@@ -346,7 +354,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	fie := mod.NewInt(new(big.Int).SetBytes(shares[j].Bytes()), &d.curveParams.P)
 
-	sharedKey, err := d.PreSharedKey(i, d.long, d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub, commits)
+	sharedKey, err := d.PreSharedKey(i, d.long, pubKeyDealer, commits)
 	if err != nil {
 		return fmt.Errorf("pre shared key: %w", err)
 	}
@@ -362,7 +370,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.BroadcasterIndex.Int64())
 		err = d.DisputeShare(
 			commits,
-			d.participants[int(broadcastSharesLog.BroadcasterIndex.Int64())].pub,
+			pubKeyDealer,
 			int(broadcastSharesLog.BroadcasterIndex.Int64()),
 			fie,
 			shares,
@@ -588,6 +596,69 @@ func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Poi
 	opts.GasPrice = big.NewInt(1000000000)
 
 	tx, err := d.contract.DisputeShare(opts, big.NewInt(int64(i)), shares, ShareVerifierProof(*proof.Proof))
+	if err != nil {
+		return fmt.Errorf("dispute share: %w", err)
+	}
+
+	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	if err != nil {
+		return fmt.Errorf("wait mined register: %w", err)
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		return errors.New("receipt status failed")
+	}
+
+	return nil
+}
+
+func (d *DistKeyGenerator) DisputeShareInput(commits [][2]*big.Int, pubKeyDealer kyber.Point, addressDealer common.Address) error {
+	args := make([]*big.Int, 0)
+
+	for _, commit := range commits {
+		args = append(args, commit[:]...)
+	}
+
+	pubX, pubY := pubKeyDealer.(*curve25519.ProjPoint).GetXY()
+	args = append(args, &pubX.V, &pubY.V)
+
+	hashInput := make([]byte, 0)
+
+	commitmentsHash, err := d.contract.CommitmentHashes(nil, addressDealer)
+	if err != nil {
+		return fmt.Errorf("commitment hashes: %w", err)
+	}
+	hashInput = append(hashInput, commitmentsHash[:]...)
+
+	buf := make([]byte, 32)
+	hashInput = append(hashInput, pubX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubY.V.FillBytes(buf)...)
+
+	rawHash := crypto.Keccak256(hashInput)
+	hash := []*big.Int{
+		new(big.Int).SetBytes(rawHash[:16]),
+		new(big.Int).SetBytes(rawHash[16:]),
+	}
+
+	args = append(args, hash...)
+
+	err = d.polyProver.ComputeWitness(context.Background(), EvalPolyInputProof, args)
+	if err != nil {
+		return fmt.Errorf("compute witness: %w", err)
+	}
+
+	proof, err := d.polyProver.GenerateProof(context.Background(), EvalPolyInputProof)
+	if err != nil {
+		return fmt.Errorf("compute witness: %w", err)
+	}
+
+	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
+	if err != nil {
+		return fmt.Errorf("keyed transactor with chainID: %w", err)
+	}
+	opts.GasPrice = big.NewInt(1000000000)
+
+	tx, err := d.contract.DisputeShareInput(opts, addressDealer, ShareInputVerifierProof(*proof.Proof))
 	if err != nil {
 		return fmt.Errorf("dispute share: %w", err)
 	}

@@ -13,9 +13,12 @@ async function main() {
   await shareVerifier.deployed();
   console.log("ShareVerifier deployed to:", shareVerifier.address);
 
+  const shareInputVerifier = await (await hre.ethers.getContractFactory("ShareInputVerifier")).deploy();
+  await shareInputVerifier.deployed();
+  console.log("ShareInputVerifier deployed to:", shareInputVerifier.address);
 
   const ZKDKG = await hre.ethers.getContractFactory("ZKDKG");
-  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, 3);
+  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, shareInputVerifier.address, 3);
 
   await zkDKG.deployed();
 

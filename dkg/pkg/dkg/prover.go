@@ -18,6 +18,7 @@ type ProofType string
 const (
 	EvalPolyProof ProofType = "poly_eval"
 	KeyDerivProof ProofType = "key_deriv"
+	EvalPolyInputProof ProofType = "poly_eval_input"
 
 	zokratesImage = "zokrates/zokrates"
 	mountTarget   = "/home/zokrates/build"
