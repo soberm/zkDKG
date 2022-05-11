@@ -13,20 +13,19 @@ import "hashes/keccak/256bit" as keccak256
 import "utils/pack/bool/pack256" as pack256
 import "utils/pack/bool/unpack256" as unpack256
 
-def computeSharedKey(field secretKey, field[2] pubKey, field index, field[2][2] commits) -> field:
+def computeSharedKey(field secretKey, field[2] pubKey, field[2][2] commits) -> field:
     
     field[2] exchanged_key = edwardsScalarMult(unpack256(secretKey), pubKey, BABYJUBJUB_PARAMS)
    
     u64[4] x = bool_array_to_u64_array(unpack256(exchanged_key[0]))
-    u64[4] i = bool_array_to_u64_array(unpack256(index))
     u64[16] c = commits_to_u64::<_,16>(commits)
    
-    u64[4] key_hash = keccak256([...x, ...i, ...c])
+    u64[4] key_hash = keccak256([...x, ...c])
 
     return pack256(u64_array_to_bool_array::<4,256>(key_hash))
 
-def decrypt(field secretKey, field[2] pubKey, field index, field[2][2] commits, field encryptedShare) -> field:
-    return encryptedShare - computeSharedKey(secretKey, pubKey, index, commits)
+def decrypt(field secretKey, field[2] pubKey, field[2][2] commits, field encryptedShare) -> field:
+    return encryptedShare - computeSharedKey(secretKey, pubKey, commits)
 
 /*
  * Evaluate the public commitment polynomial at the given index.
@@ -58,7 +57,7 @@ def main(private field[2][2] commits, private field secretKey, private field[2] 
      * The shares on the blockchain are encrypted through one-time pad encryption,
      * using a combination of DH key exchange and keccak256 to generate a single-use key.
      */
-    field share = decrypt(secretKey, pubKeyDealer, index, commits, encryptedShare)
+    field share = decrypt(secretKey, pubKeyDealer, commits, encryptedShare)
     
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
     field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)

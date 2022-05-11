@@ -1,11 +1,9 @@
 package dkg
 
 import (
-	"bytes"
 	"client/internal/pkg/group/curve25519"
 	"context"
 	"crypto/ecdsa"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -452,7 +450,7 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGCo
 	}
 
 	log.Infoln("Submitted public key invalid")
-	
+
 	args := make([]*big.Int, 0)
 
 	firstCoefficients := make([]byte, 0)
@@ -513,7 +511,7 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGCo
 		return errors.New("receipt status failed")
 	}
 
-	return nil;
+	return nil
 }
 
 func (d *DistKeyGenerator) DisputeShare(commitments []kyber.Point, pub kyber.Point, i int, fi kyber.Scalar, shares []*big.Int) error {
@@ -793,13 +791,7 @@ func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKe
 		return nil, fmt.Errorf("marshal binary: %w", err)
 	}
 
-	buf := new(bytes.Buffer)
-	err = binary.Write(buf, binary.BigEndian, int64(i+1))
-	if err != nil {
-		return nil, fmt.Errorf("binary write: %w", err)
-	}
-
-	commitsBin := make([]byte, 0, len(commits) * 64)
+	commitsBin := make([]byte, 0, len(commits)*64)
 	for i := range commits {
 		bin, err := commits[i].MarshalBinary()
 		if err != nil {
@@ -810,7 +802,6 @@ func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKe
 
 	hash := crypto.Keccak256Hash(
 		b,
-		PadTrimLeft(buf.Bytes(), 32),
 		commitsBin,
 	)
 	return mod.NewInt(new(big.Int).SetBytes(hash.Bytes()), &d.curveParams.P), nil
