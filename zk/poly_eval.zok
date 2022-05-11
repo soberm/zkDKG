@@ -18,11 +18,11 @@ def computeSharedKey(field secretKey, field[2] pubKey, field[2][2] commits) -> f
     field[2] exchanged_key = edwardsScalarMult(unpack256(secretKey), pubKey, BABYJUBJUB_PARAMS)
    
     u64[4] x = bool_array_to_u64_array(unpack256(exchanged_key[0]))
-    u64[16] c = commits_to_u64::<_,16>(commits)
+    u64[8] c = field_array_to_u64_array::<_,8>(commits[0])
    
     u64[4] key_hash = keccak256([...x, ...c])
 
-    return pack256(u64_array_to_bool_array::<4,256>(key_hash))
+    return pack256(u64_array_to_bool_array::<_,256>(key_hash))
 
 def decrypt(field secretKey, field[2] pubKey, field[2][2] commits, field encryptedShare) -> field:
     return encryptedShare - computeSharedKey(secretKey, pubKey, commits)

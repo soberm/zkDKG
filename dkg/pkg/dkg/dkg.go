@@ -791,13 +791,9 @@ func (d *DistKeyGenerator) PreSharedKey(i int, privateKey kyber.Scalar, publicKe
 		return nil, fmt.Errorf("marshal binary: %w", err)
 	}
 
-	commitsBin := make([]byte, 0, len(commits)*64)
-	for i := range commits {
-		bin, err := commits[i].MarshalBinary()
-		if err != nil {
-			return nil, fmt.Errorf("marshal commit: %w", err)
-		}
-		commitsBin = append(commitsBin, bin...)
+	commitsBin, err := commits[0].MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("marshal commit: %w", err)
 	}
 
 	hash := crypto.Keccak256Hash(
