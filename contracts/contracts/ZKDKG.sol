@@ -12,6 +12,8 @@ contract ZKDKG {
 
     uint256 public constant MIN_STAKE = 0 ether;
 
+    uint private constant CURVE_ORDER = 21888242871839275222246405745257275088614511777268538073601725287587578984328;
+
     struct Participant {
         uint256 index;
         uint256[2] publicKey;
@@ -75,6 +77,8 @@ contract ZKDKG {
             revert("registration phase is over");
         }
 
+        require(publicKey[0] < CURVE_ORDER && publicKey[1] < CURVE_ORDER, "invalid public key");
+
         participants[msg.sender] = Participant(addresses.length, publicKey);
         addresses.push(msg.sender);
 
@@ -104,6 +108,13 @@ contract ZKDKG {
             commitments.length == threshold(),
             "invalid number of commitments"
         );
+
+        for (uint i = 0; i < shares.length; i++) {
+            require(shares[i] < CURVE_ORDER, "invalid share");
+        }
+        for (uint i = 0; i < commitments.length; i++) {
+            require(commitments[i][0] < CURVE_ORDER && commitments[i][1] < CURVE_ORDER, "invalid commitment");
+        }
 
         firstCoefficients.push(commitments[0]);
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
