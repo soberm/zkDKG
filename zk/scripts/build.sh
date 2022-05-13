@@ -10,8 +10,8 @@ mkdir -p $build
 
 # Zokrates has problems with accepting input directly from stdin via /dev/stdin and piping, so temporarily store "generated" file
 sed -E "s/(const u32 N =) \?/\1 $2/" $source > $generated
+trap "rm $generated" EXIT
 zokrates compile -i $generated -s $build/abi.json -o $build/out
-rm $generated
 
 zokrates setup -i $build/out --proving-key-path $build/proving.key --verification-key-path $build/verification.key
 
