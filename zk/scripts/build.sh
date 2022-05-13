@@ -1,10 +1,10 @@
 #!/bin/bash
 
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")"/../ || exit 1
 
-build=../build/${1%.*}
-source=../$1
-generated=../$1.gen
+build=build/${1%.*}
+source=$1
+generated=$1.gen
 
 mkdir -p $build
 
@@ -25,7 +25,7 @@ pragma solidity ^0.8.0;"
 zokrates export-verifier -i $build/verification.key -o $build/verifier.sol
 
 pairing=$(sed -n "/^library Pairing/,/^}/p" $build/verifier.sol)
-printf "$prefix\n$pairing" > ../../contracts/contracts/Pairing.sol
+printf "$prefix\n$pairing" > ../contracts/contracts/Pairing.sol
 
 shareVerifier=$(sed -ne "s/Verifier/ShareVerifier/" -e "/^contract ShareVerifier/,/^}/p" $build/verifier.sol)
-printf "$prefix\nimport \"./Pairing.sol\";\n$shareVerifier" > ../../contracts/contracts/ShareVerifier.sol
+printf "$prefix\nimport \"./Pairing.sol\";\n$shareVerifier" > ../contracts/contracts/ShareVerifier.sol
