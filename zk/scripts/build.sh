@@ -2,14 +2,16 @@
 
 cd "$(dirname "$0")"/../ || exit 1
 
-build=build/${1%.*}
 source=$1
+n=$2
+
+build=build/${1%.*}
 generated=$1.gen
 
 mkdir -p $build
 
 # Zokrates has problems with accepting input directly from stdin via /dev/stdin and piping, so temporarily store "generated" file
-sed -E "s/(const u32 N =) \?/\1 $2/" $source > $generated
+sed -E "s/(const u32 N =) \?/\1 $n/" $source > $generated
 trap "rm $generated" EXIT
 zokrates compile -i $generated -s $build/abi.json -o $build/out
 
