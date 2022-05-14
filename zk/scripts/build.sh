@@ -23,6 +23,8 @@ inputs["poly_eval"]="ShareVerifier"
 inputs["poly_eval_input"]="ShareInputVerifier"
 inputs["key_deriv"]="KeyVerifier"
 
+trap "rm -f ./*.gen" EXIT
+
 for name in ${!inputs[@]}; do
     source=./$name.zok
     buildDir=$buildRoot/$name
@@ -34,7 +36,6 @@ for name in ${!inputs[@]}; do
 
     # Zokrates has problems with accepting input directly from stdin via /dev/stdin and piping, so temporarily store "generated" file
     sed -E "s/(const u32 N =) \?/\1 $participants/" $source > $generated
-    trap "rm $generated" EXIT
 
     # A matching checksum indicates that all files were already built with the same input file, continue
     if [[ -f $checksumFile ]] && $(sha1sum -c --status $checksumFile); then
