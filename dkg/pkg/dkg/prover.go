@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"path"
 	"strings"
 
@@ -28,9 +29,10 @@ type Prover struct {
 	dc          *client.Client
 	mountSource string
 	bind        string
+	pipe		*os.File
 }
 
-func NewProver(mountSource string) (*Prover, error) {
+func NewProver(mountSource string, pipe *os.File) (*Prover, error) {
 	dc, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
@@ -39,6 +41,7 @@ func NewProver(mountSource string) (*Prover, error) {
 		dc:          dc,
 		mountSource: mountSource,
 		bind:        strings.Join([]string{mountSource, mountTarget}, ":"),
+		pipe:		 pipe,
 	}, nil
 }
 
@@ -94,9 +97,17 @@ func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args [
 		}
 	}
 
-	if err := p.dc.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{}); err != nil {
-		return fmt.Errorf("remove container: %w", err)
+	if p.pipe != nil {
+		json, err := p.dc.ContainerInspect(ctx, resp.ID)
+		if err != nil {
+			return fmt.Errorf("inspect container: %w", err)
+		}
+
+		if _, err = p.pipe.WriteString(json.Name[1:] + "\n"); err != nil {
+			return fmt.Errorf("write to pipe: %w", err)
+		}
 	}
+
 	return nil
 }
 
@@ -148,8 +159,17 @@ func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof
 		}
 	}
 
-	if err := p.dc.ContainerRemove(ctx, resp.ID, types.ContainerRemoveOptions{}); err != nil {
-		return nil, fmt.Errorf("remove container: %w", err)
+	if p.pipe != nil {
+		defer p.pipe.Close()
+
+		json, err := p.dc.ContainerInspect(ctx, resp.ID)
+		if err != nil {
+			return nil, fmt.Errorf("inspect container: %w", err)
+		}
+
+		if _, err = p.pipe.WriteString(json.Name[1:] + "\n"); err != nil {
+			return nil, fmt.Errorf("write to pipe: %w", err)
+		}
 	}
 
 	file, err := ioutil.ReadFile(path.Join(p.mountSource, string(proofType), "proof.json"))

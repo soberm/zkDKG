@@ -1,11 +1,11 @@
 #!/bin/bash
 
-cd "$(dirname "$0")"/../ || exit 1
+cd "$(dirname "$0")"/../../ || exit 1
 
 participants=$1
 
 buildRoot=./build/$participants
-contracts=../contracts/contracts
+contracts=./contracts/contracts
 
 mkdir -p $buildRoot
 
@@ -26,16 +26,16 @@ inputs["key_deriv"]="KeyVerifier"
 trap "rm -f ./*.gen" EXIT
 
 for name in ${!inputs[@]}; do
-    source=./$name.zok
+    source=zk/$name.zok
     buildDir=$buildRoot/$name
-    generated=./$name.gen
+    generated=zk/$name.gen
     contractName=${inputs[$name]}
     checksumFile=$buildDir/$name.sha1
 
     mkdir -p $buildDir
 
     # Zokrates has problems with accepting input directly from stdin via /dev/stdin and piping, so temporarily store "generated" file
-    sed -E "s/(const u32 N =) \?/\1 $participants/" $source > $generated
+    sed -E "s/^\/\/ (const u32 PARTICIPANTS =).*/\1 $participants/" $source > $generated
 
     # A matching checksum indicates that all files were already built with the same input file, continue
     if [[ -f $checksumFile ]] && $(sha1sum -c --status $checksumFile); then
@@ -52,11 +52,11 @@ for name in ${!inputs[@]}; do
     # The pairing contract is only required once
     if [[ $name == "poly_eval" ]]; then
         pairing=$(sed -n "/^library Pairing/,/^}/p" $buildDir/verifier.sol)
-        printf "${prefix}${pairing}" > $contracts/Pairing.sol
+        echo -e "${prefix}${pairing}" > $contracts/Pairing.sol
     fi
 
     verifier=$(sed -ne "s/Verifier/$contractName/" -e "/^contract $contractName/,/^}/p" $buildDir/verifier.sol)
-    printf "${prefixWithImport}${verifier}" > $contracts/$contractName.sol
+    echo -e "${prefixWithImport}${verifier}" > $contracts/$contractName.sol
 
     # Compute checksum to indicate a succesful build using the current source file
     sha1sum $generated > $checksumFile

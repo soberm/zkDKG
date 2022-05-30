@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -43,9 +44,11 @@ type DistKeyGenerator struct {
 	shares             map[int]kyber.Scalar
 	commitments        map[int][]kyber.Point
 	done               chan bool
+	rogue			   bool
+	ignoreInvalid	   bool
 }
 
-func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
+func NewDistributedKeyGenerator(config *Config, idPipe string, rogue bool, ignoreInvalid bool) (*DistKeyGenerator, error) {
 
 	param := ParamBabyJubJub()
 	curve := &curve25519.ProjectiveCurve{}
@@ -77,7 +80,14 @@ func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 		return nil, fmt.Errorf("hex to scalar: %v", err)
 	}
 
-	polyProver, err := NewProver(config.MountSource)
+	var pipe *os.File = nil
+	if idPipe != "" {
+		if pipe, err = os.OpenFile(idPipe, os.O_WRONLY, os.ModeNamedPipe); err != nil {
+			return nil, fmt.Errorf("open pipe: %v", err)
+		}
+	}
+
+	polyProver, err := NewProver(config.MountSource, pipe)
 	if err != nil {
 		return nil, fmt.Errorf("prover: %v", err)
 	}
@@ -96,6 +106,8 @@ func NewDistributedKeyGenerator(config *Config) (*DistKeyGenerator, error) {
 		shares:             make(map[int]kyber.Scalar),
 		commitments:        make(map[int][]kyber.Point),
 		done:               make(chan bool, 1),
+		rogue:  			rogue,
+		ignoreInvalid:		ignoreInvalid,
 	}, nil
 
 }
@@ -178,6 +190,7 @@ func (d *DistKeyGenerator) Generate(ctx context.Context) (*DistKeyShare, error) 
 		return nil, fmt.Errorf("point to big: %w", err)
 	}
 
+	// TODO Don't automatically let the 0th node submit the PK
 	if int(d.index.Int64()) == 0 {
 		opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 		if err != nil {
@@ -335,10 +348,14 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	commits, err := BigToPoints(d.suite, commitments)
 	if err != nil {
-		log.Infof("Received invalid commits from dealer %d, disputing...", broadcastSharesLog.BroadcasterIndex)
+		log.Infof("Received invalid commits from dealer %d", broadcastSharesLog.BroadcasterIndex)
 
-		if err := d.DisputeShareInput(commitments, pubKeyDealer, broadcastSharesLog.Sender); err != nil {
-			return fmt.Errorf("dispute share input: %w", err)
+		if !d.ignoreInvalid {
+			log.Infoln("Disputing invalid commits")
+
+			if err := d.DisputeShareInput(commitments, pubKeyDealer, broadcastSharesLog.Sender); err != nil {
+				return fmt.Errorf("dispute share input: %w", err)
+			}
 		}
 
 		return nil
@@ -366,15 +383,18 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	if !pubPoly.Check(fi) {
 		log.Infof("Received invalid share from dealer %v", broadcastSharesLog.BroadcasterIndex.Int64())
-		err = d.DisputeShare(
-			commits,
-			pubKeyDealer,
-			int(broadcastSharesLog.BroadcasterIndex.Int64()),
-			fie,
-			shares,
-		)
-		if err != nil {
-			return fmt.Errorf("dispute share: %w", err)
+
+		if !d.ignoreInvalid {
+			err = d.DisputeShare(
+				commits,
+				pubKeyDealer,
+				int(broadcastSharesLog.BroadcasterIndex.Int64()),
+				fie,
+				shares,
+			)
+			if err != nil {
+				return fmt.Errorf("dispute share: %w", err)
+			}
 		}
 		return nil
 	}
@@ -450,6 +470,10 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGCo
 	}
 
 	log.Infoln("Submitted public key invalid")
+
+	if d.ignoreInvalid {
+		return nil
+	}
 
 	args := make([]*big.Int, 0)
 
@@ -720,7 +744,16 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	if err != nil {
 		return fmt.Errorf("points to big: %w", err)
 	}
-	log.Infof("Commitments: %v", commitments)
+
+	commitsString := "Commitments"
+	if d.rogue {
+		commitsString = "Fake commitments"
+		for _, commit := range commitments {
+			commit[0].Add(commit[0], big.NewInt(1))
+		}
+	}
+
+	log.Infof("%s: %v", commitsString, commitments)
 
 	shares := make([]*big.Int, 0)
 	for i := 0; i < len(d.participants); i++ {
