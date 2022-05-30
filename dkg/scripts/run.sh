@@ -36,6 +36,8 @@ main() {
     cadvisorId=$(<"$cidFile")
     rm "$cidFile"
 
+    cd ./contracts/
+
     for ((participants = start; participants <= end; participants++)) do
         echo "Starting to measure runtime for $participants participants"
 

@@ -4,7 +4,7 @@ import (
 	"client/pkg/dkg"
 	"context"
 	"flag"
-	"fmt"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -32,12 +32,14 @@ func main() {
 
 	gen, err := dkg.NewDistributedKeyGenerator(&config, *idPipe, *rogue, *ignoreInvalid)
 	if err != nil {
-		fmt.Printf("%v", err)
+		log.Errorf("Initializing DKG protocol: %v", err)
+		os.Exit(1)
 	}
 
 	distKeyShare, err := gen.Generate(context.Background())
 	if err != nil {
-		fmt.Printf("%v", err)
+		log.Errorf("Executing DKG protocol: %v", err)
+		os.Exit(1)
 	}
 
 	log.Infof("Public Key: %+v", distKeyShare.Public())
