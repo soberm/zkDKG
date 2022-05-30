@@ -75,8 +75,8 @@ module.exports.networks.hardhat.accounts = {count: $participants};" > "$config"
 
         for ((i = 0; i < participants; i++)); do
 
-            # The last participant has to pay higher gas fees, wait so that gas estimation respects this circumstance
-            if (( i == participants - 1 )); then
+            # Delay node starts so that gas estimation for the register transaction is accurate
+            if (( i != 0 )); then
                 sleep 2
             fi
 
