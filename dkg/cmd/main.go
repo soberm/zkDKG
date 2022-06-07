@@ -2,7 +2,6 @@ package main
 
 import (
 	"client/pkg/dkg"
-	"context"
 	"flag"
 	"os"
 
@@ -11,7 +10,6 @@ import (
 )
 
 func main() {
-
 	configFile := flag.String("c", "./configs/config_1.json", "filename of the config file")
 	idPipe := flag.String("id-pipe", "", "filename of the named pipe used for writing the docker IDs of the zokrates containers")
 	rogue := flag.Bool("rogue", false, "whether the node should behave dishonest and publish invalid commitments")
@@ -36,11 +34,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	distKeyShare, err := gen.Generate(context.Background())
+	pub, err := gen.Generate()
 	if err != nil {
 		log.Errorf("Executing DKG protocol: %v", err)
 		os.Exit(1)
 	}
 
-	log.Infof("Public Key: %+v", distKeyShare.Public())
+	log.Infof("Public Key: %+v", pub)
 }

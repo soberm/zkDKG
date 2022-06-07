@@ -20,10 +20,9 @@ prefixWithImport="${prefix}\nimport \"./Pairing.sol\";\n\n"
 
 declare -A inputs
 inputs["poly_eval"]="ShareVerifier"
-inputs["poly_eval_input"]="ShareInputVerifier"
 inputs["key_deriv"]="KeyVerifier"
 
-trap "rm -f ./*.gen" EXIT
+trap "rm -f zk/*.gen" EXIT
 
 for name in ${!inputs[@]}; do
     source=zk/$name.zok

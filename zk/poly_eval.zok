@@ -44,7 +44,7 @@ def evalPubPoly(field index, field[N][2] commits) -> field[2]:
 
     return expected
 
-def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDealer, private field index, private field encryptedShare, field[2] hash) -> bool:
+def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDisputer, private field index, private field encryptedShare, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
     u64[4] commitsHash = keccak256(commits_to_u64::<_,N_TIMES_8>(commits))
@@ -52,7 +52,7 @@ def main(private field[N][2] commits, private field secretKey, private field[2] 
     assert(hash == u64_array_to_field_array::<_,2>(keccak256([
         ...commitsHash,
         ...field_array_to_u64_array::<_,8>(pubKeyProofer),
-        ...field_array_to_u64_array::<_,8>(pubKeyDealer),
+        ...field_array_to_u64_array::<_,8>(pubKeyDisputer),
         ...field_to_u64_array(index),
         ...field_to_u64_array(encryptedShare)
     ])))
@@ -61,10 +61,10 @@ def main(private field[N][2] commits, private field secretKey, private field[2] 
      * The shares on the blockchain are encrypted through one-time pad encryption,
      * using a combination of DH key exchange and keccak256 to generate a single-use key.
      */
-    field share = decrypt(secretKey, pubKeyDealer, commits, encryptedShare)
+    field share = decrypt(secretKey, pubKeyDisputer, commits, encryptedShare)
     
     field[2] G = [BABYJUBJUB_PARAMS.Gu, BABYJUBJUB_PARAMS.Gv]
     field[2] actual = edwardsScalarMult(unpack256(share), G, BABYJUBJUB_PARAMS)
     field[2] expected = evalPubPoly(index, commits)
 
-    return actual[0] != expected[0] || actual[1] != expected[1]
+    return actual[0] == expected[0] && actual[1] == expected[1]

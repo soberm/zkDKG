@@ -1,12 +1,18 @@
 #!/bin/bash
 
+cd "$(dirname $0)"/../.. || exit 1
+
 start=3
 end=3
 stepSize=3
 containerIndex=1
-
-cd "$(dirname $0)"/../.. || exit 1
 root="$(pwd)"
+
+declare cadvisorId
+declare nodePid
+declare -A goPids=()
+
+trap cleanup EXIT
 
 main() {
     parse_input "$1"
@@ -29,7 +35,7 @@ main() {
     --allow_dynamic_housekeeping=false \
     &> "$buildRoot"/cadvisor.log &
 
-    until [[ -f "$cidFile" ]]; do
+    until [[ -f $cidFile ]]; do
         sleep 1
     done
 
@@ -44,39 +50,30 @@ main() {
         ../zk/scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
-        config="$buildDir"/hardhat.config.js
         log="$buildDir"/hardhat.log
         containerPipe="$buildDir"/container_pipe
 
-        echo "$(cat ./hardhat.config.js)
-
-module.exports.networks = module.exports.networks || {};
-module.exports.networks.hardhat = module.exports.networks.hardhat || {};
-module.exports.networks.hardhat.accounts = {count: $participants};" > "$config"
-
-        NODE_PATH=./node_modules npx hardhat node --config "$config" > "$log" &
+        NODE_PATH=./node_modules npx hardhat node > "$log" &
         nodePid=$!
-
-        trap "kill $nodePid" EXIT
 
         # Retrieve the private keys for the accounts from the log of the Hardhat node
         ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
 
         npx hardhat --network localhost run ./scripts/deploy.js
 
-        if [[ ! -p "$containerPipe" ]]; then
+        if [[ ! -p $containerPipe ]]; then
             rm -f "$containerPipe"
             mkfifo "$containerPipe"
         fi
         containerPipe=$(readlink -e "$containerPipe")
 
-        goPids=()
+        local goPids=()
         cd ../dkg/
 
-        for ((i = 0; i < participants; i++)); do
+        for ((i = 1; i <= participants; i++)); do
 
             # Delay node starts so that gas estimation for the register transaction is accurate
-            if (( i != 0 )); then
+            if (( i != 1 )); then
                 sleep 2
             fi
 
@@ -85,18 +82,18 @@ module.exports.networks.hardhat.accounts = {count: $participants};" > "$config"
 
             config="{
                 \"EthereumNode\":       \"ws://127.0.0.1:8545\",
-                \"EthereumPrivateKey\": \"${ethPrivs[$i]}\",
+                \"EthereumPrivateKey\": \"${ethPrivs[$i - 1]}\",
                 \"DkgPrivateKey\":      \"$dkgPriv\",
-                \"ContractAddress\":    \"0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9\",
+                \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
                 \"MountSource\":        \"$(readlink -e ../build/$participants/)\"
             }"
 
             flags=()
-            if (( i == 0 )); then # The 0th node emits invalid commitments
+            if (( i == 1 )); then # The 1st node emits invalid commitments
                 flags+=("--rogue")
             fi
 
-            if (( i == 1 )); then # The 1st node is the only node that should compute the proof
+            if (( i == 2 )); then # The 2nd node is the only node that should compute the proof
                 flags+=("--id-pipe=$containerPipe")
             else
                 flags+=("--ignore-invalid")
@@ -117,7 +114,7 @@ module.exports.networks.hardhat.accounts = {count: $participants};" > "$config"
         done
 
         kill $nodePid
-        trap - EXIT
+        unset nodePid
     done
 }
 
@@ -125,10 +122,10 @@ parse_input() {
     local singleRegex="^[0-9]+$"
     local rangeRegex="^\[([[:digit:]]+),([[:digit:]]+)(,([[:digit:]]+))?\]$"
 
-    if [[ "$1" =~ $singleRegex ]]; then
+    if [[ $1 =~ $singleRegex ]]; then
         start=$1
         end=$1
-    elif [[ "$1" =~ $rangeRegex ]]; then
+    elif [[ $1 =~ $rangeRegex ]]; then
         start=${BASH_REMATCH[1]}
         end=${BASH_REMATCH[1]}
         if [[ -n ${BASH_REMATCH[4]} ]]; then
@@ -143,6 +140,16 @@ collect_container_stats() {
     local csv="$1"/$((containerIndex++)).csv
     echo "time,memory_usage" > "$csv"
     perl -ne "print if s/^cName=$2(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
+}
+
+cleanup() {
+    if [[ -n $nodePid ]]; then
+        kill $nodePid
+    fi
+
+    if [[ -n $cadvisorId ]]; then
+        docker kill $cadvisorId > /dev/null
+    fi    
 }
 
 main "$@"

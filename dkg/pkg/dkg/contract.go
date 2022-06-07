@@ -47,13 +47,6 @@ type PairingG2Point struct {
 	Y [2]*big.Int
 }
 
-// ShareInputVerifierProof is an auto generated low-level Go binding around an user-defined struct.
-type ShareInputVerifierProof struct {
-	A PairingG1Point
-	B PairingG2Point
-	C PairingG1Point
-}
-
 // ShareVerifierProof is an auto generated low-level Go binding around an user-defined struct.
 type ShareVerifierProof struct {
 	A PairingG1Point
@@ -63,13 +56,13 @@ type ShareVerifierProof struct {
 
 // ZKDKGParticipant is an auto generated low-level Go binding around an user-defined struct.
 type ZKDKGParticipant struct {
-	Index     *big.Int
+	Index     uint64
 	PublicKey [2]*big.Int
 }
 
 // ZKDKGContractMetaData contains all meta data concerning the ZKDKGContract contract.
 var ZKDKGContractMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_shareVerifier\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_keyVerifier\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_shareInputVerifier\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_noParticipants\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"broadcasterIndex\",\"type\":\"uint256\"}],\"name\":\"BroadcastSharesLog\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"DisputeShare\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"DistributionEndLog\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"PublicKeySubmission\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"RegistrationEndLog\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"KEY_DISPUTE_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"MIN_STAKE\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SHARES_BROADCAST_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SHARES_DISPUTE_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"addresses\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2][]\",\"name\":\"commitments\",\"type\":\"uint256[2][]\"},{\"internalType\":\"uint256[]\",\"name\":\"shares\",\"type\":\"uint256[]\"}],\"name\":\"broadcastShares\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"commitmentHashes\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"countParticipants\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"a\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256[2]\",\"name\":\"X\",\"type\":\"uint256[2]\"},{\"internalType\":\"uint256[2]\",\"name\":\"Y\",\"type\":\"uint256[2]\"}],\"internalType\":\"structPairing.G2Point\",\"name\":\"b\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"c\",\"type\":\"tuple\"}],\"internalType\":\"structKeyVerifier.Proof\",\"name\":\"proof\",\"type\":\"tuple\"}],\"name\":\"disputePublicKey\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"dealerIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256[]\",\"name\":\"shares\",\"type\":\"uint256[]\"},{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"a\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256[2]\",\"name\":\"X\",\"type\":\"uint256[2]\"},{\"internalType\":\"uint256[2]\",\"name\":\"Y\",\"type\":\"uint256[2]\"}],\"internalType\":\"structPairing.G2Point\",\"name\":\"b\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"c\",\"type\":\"tuple\"}],\"internalType\":\"structShareVerifier.Proof\",\"name\":\"proof\",\"type\":\"tuple\"}],\"name\":\"disputeShare\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"dealerAddress\",\"type\":\"address\"},{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"a\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256[2]\",\"name\":\"X\",\"type\":\"uint256[2]\"},{\"internalType\":\"uint256[2]\",\"name\":\"Y\",\"type\":\"uint256[2]\"}],\"internalType\":\"structPairing.G2Point\",\"name\":\"b\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"c\",\"type\":\"tuple\"}],\"internalType\":\"structShareInputVerifier.Proof\",\"name\":\"proof\",\"type\":\"tuple\"}],\"name\":\"disputeShareInput\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_index\",\"type\":\"uint256\"}],\"name\":\"findParticipantByIndex\",\"outputs\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"},{\"internalType\":\"uint256[2]\",\"name\":\"publicKey\",\"type\":\"uint256[2]\"}],\"internalType\":\"structZKDKG.Participant\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"firstCoefficients\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_hash\",\"type\":\"bytes32\"}],\"name\":\"hashToUint128\",\"outputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"\",\"type\":\"uint256[2]\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_addr\",\"type\":\"address\"}],\"name\":\"isRegistered\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"masterPublicKey\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"noParticipants\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"participants\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"phase\",\"outputs\":[{\"internalType\":\"enumZKDKG.Phases\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"publicKey\",\"type\":\"uint256[2]\"}],\"name\":\"register\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"shareHashes\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"_publicKey\",\"type\":\"uint256[2]\"}],\"name\":\"submitPublicKey\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"threshold\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_shareVerifier\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_keyVerifier\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"_noParticipants\",\"type\":\"uint256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"broadcasterIndex\",\"type\":\"uint64\"}],\"name\":\"BroadcastSharesLog\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"disputerIndex\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"disputeeIndex\",\"type\":\"uint64\"}],\"name\":\"DisputeShare\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"DistributionEndLog\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"PublicKeySubmission\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"RegistrationEndLog\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"Reset\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"KEY_DISPUTE_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SHARES_BROADCAST_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SHARES_DEFENSE_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"SHARES_DISPUTE_PERIOD\",\"outputs\":[{\"internalType\":\"uint16\",\"name\":\"\",\"type\":\"uint16\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"STAKE\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"addresses\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2][]\",\"name\":\"commitments\",\"type\":\"uint256[2][]\"},{\"internalType\":\"uint256[]\",\"name\":\"shares\",\"type\":\"uint256[]\"}],\"name\":\"broadcastShares\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"claim\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"commitmentHashes\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"countParticipants\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"a\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256[2]\",\"name\":\"X\",\"type\":\"uint256[2]\"},{\"internalType\":\"uint256[2]\",\"name\":\"Y\",\"type\":\"uint256[2]\"}],\"internalType\":\"structPairing.G2Point\",\"name\":\"b\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"c\",\"type\":\"tuple\"}],\"internalType\":\"structShareVerifier.Proof\",\"name\":\"proof\",\"type\":\"tuple\"}],\"name\":\"defendShare\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"a\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256[2]\",\"name\":\"X\",\"type\":\"uint256[2]\"},{\"internalType\":\"uint256[2]\",\"name\":\"Y\",\"type\":\"uint256[2]\"}],\"internalType\":\"structPairing.G2Point\",\"name\":\"b\",\"type\":\"tuple\"},{\"components\":[{\"internalType\":\"uint256\",\"name\":\"X\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"Y\",\"type\":\"uint256\"}],\"internalType\":\"structPairing.G1Point\",\"name\":\"c\",\"type\":\"tuple\"}],\"internalType\":\"structKeyVerifier.Proof\",\"name\":\"proof\",\"type\":\"tuple\"}],\"name\":\"disputePublicKey\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint64\",\"name\":\"disputeeIndex\",\"type\":\"uint64\"},{\"internalType\":\"uint256[]\",\"name\":\"shares\",\"type\":\"uint256[]\"}],\"name\":\"disputeShare\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_index\",\"type\":\"uint256\"}],\"name\":\"findParticipantByIndex\",\"outputs\":[{\"components\":[{\"internalType\":\"uint64\",\"name\":\"index\",\"type\":\"uint64\"},{\"internalType\":\"uint256[2]\",\"name\":\"publicKey\",\"type\":\"uint256[2]\"}],\"internalType\":\"structZKDKG.Participant\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"firstCoefficients\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_hash\",\"type\":\"bytes32\"}],\"name\":\"hashToUint128\",\"outputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"\",\"type\":\"uint256[2]\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_addr\",\"type\":\"address\"}],\"name\":\"isRegistered\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"masterPublicKey\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"noParticipants\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"participants\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"index\",\"type\":\"uint64\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"phase\",\"outputs\":[{\"internalType\":\"enumZKDKG.Phase\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"publicKey\",\"type\":\"uint256[2]\"}],\"name\":\"register\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"shareHashes\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256[2]\",\"name\":\"_publicKey\",\"type\":\"uint256[2]\"}],\"name\":\"submitPublicKey\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"threshold\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // ZKDKGContractABI is the input ABI used to generate the binding from.
@@ -249,37 +242,6 @@ func (_ZKDKGContract *ZKDKGContractCallerSession) KEYDISPUTEPERIOD() (uint16, er
 	return _ZKDKGContract.Contract.KEYDISPUTEPERIOD(&_ZKDKGContract.CallOpts)
 }
 
-// MINSTAKE is a free data retrieval call binding the contract method 0xcb1c2b5c.
-//
-// Solidity: function MIN_STAKE() view returns(uint256)
-func (_ZKDKGContract *ZKDKGContractCaller) MINSTAKE(opts *bind.CallOpts) (*big.Int, error) {
-	var out []interface{}
-	err := _ZKDKGContract.contract.Call(opts, &out, "MIN_STAKE")
-
-	if err != nil {
-		return *new(*big.Int), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-
-	return out0, err
-
-}
-
-// MINSTAKE is a free data retrieval call binding the contract method 0xcb1c2b5c.
-//
-// Solidity: function MIN_STAKE() view returns(uint256)
-func (_ZKDKGContract *ZKDKGContractSession) MINSTAKE() (*big.Int, error) {
-	return _ZKDKGContract.Contract.MINSTAKE(&_ZKDKGContract.CallOpts)
-}
-
-// MINSTAKE is a free data retrieval call binding the contract method 0xcb1c2b5c.
-//
-// Solidity: function MIN_STAKE() view returns(uint256)
-func (_ZKDKGContract *ZKDKGContractCallerSession) MINSTAKE() (*big.Int, error) {
-	return _ZKDKGContract.Contract.MINSTAKE(&_ZKDKGContract.CallOpts)
-}
-
 // SHARESBROADCASTPERIOD is a free data retrieval call binding the contract method 0x8c967a70.
 //
 // Solidity: function SHARES_BROADCAST_PERIOD() view returns(uint16)
@@ -311,6 +273,37 @@ func (_ZKDKGContract *ZKDKGContractCallerSession) SHARESBROADCASTPERIOD() (uint1
 	return _ZKDKGContract.Contract.SHARESBROADCASTPERIOD(&_ZKDKGContract.CallOpts)
 }
 
+// SHARESDEFENSEPERIOD is a free data retrieval call binding the contract method 0x4d6db3dc.
+//
+// Solidity: function SHARES_DEFENSE_PERIOD() view returns(uint16)
+func (_ZKDKGContract *ZKDKGContractCaller) SHARESDEFENSEPERIOD(opts *bind.CallOpts) (uint16, error) {
+	var out []interface{}
+	err := _ZKDKGContract.contract.Call(opts, &out, "SHARES_DEFENSE_PERIOD")
+
+	if err != nil {
+		return *new(uint16), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(uint16)).(*uint16)
+
+	return out0, err
+
+}
+
+// SHARESDEFENSEPERIOD is a free data retrieval call binding the contract method 0x4d6db3dc.
+//
+// Solidity: function SHARES_DEFENSE_PERIOD() view returns(uint16)
+func (_ZKDKGContract *ZKDKGContractSession) SHARESDEFENSEPERIOD() (uint16, error) {
+	return _ZKDKGContract.Contract.SHARESDEFENSEPERIOD(&_ZKDKGContract.CallOpts)
+}
+
+// SHARESDEFENSEPERIOD is a free data retrieval call binding the contract method 0x4d6db3dc.
+//
+// Solidity: function SHARES_DEFENSE_PERIOD() view returns(uint16)
+func (_ZKDKGContract *ZKDKGContractCallerSession) SHARESDEFENSEPERIOD() (uint16, error) {
+	return _ZKDKGContract.Contract.SHARESDEFENSEPERIOD(&_ZKDKGContract.CallOpts)
+}
+
 // SHARESDISPUTEPERIOD is a free data retrieval call binding the contract method 0x004fd399.
 //
 // Solidity: function SHARES_DISPUTE_PERIOD() view returns(uint16)
@@ -340,6 +333,37 @@ func (_ZKDKGContract *ZKDKGContractSession) SHARESDISPUTEPERIOD() (uint16, error
 // Solidity: function SHARES_DISPUTE_PERIOD() view returns(uint16)
 func (_ZKDKGContract *ZKDKGContractCallerSession) SHARESDISPUTEPERIOD() (uint16, error) {
 	return _ZKDKGContract.Contract.SHARESDISPUTEPERIOD(&_ZKDKGContract.CallOpts)
+}
+
+// STAKE is a free data retrieval call binding the contract method 0x125fdbbc.
+//
+// Solidity: function STAKE() view returns(uint256)
+func (_ZKDKGContract *ZKDKGContractCaller) STAKE(opts *bind.CallOpts) (*big.Int, error) {
+	var out []interface{}
+	err := _ZKDKGContract.contract.Call(opts, &out, "STAKE")
+
+	if err != nil {
+		return *new(*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+
+	return out0, err
+
+}
+
+// STAKE is a free data retrieval call binding the contract method 0x125fdbbc.
+//
+// Solidity: function STAKE() view returns(uint256)
+func (_ZKDKGContract *ZKDKGContractSession) STAKE() (*big.Int, error) {
+	return _ZKDKGContract.Contract.STAKE(&_ZKDKGContract.CallOpts)
+}
+
+// STAKE is a free data retrieval call binding the contract method 0x125fdbbc.
+//
+// Solidity: function STAKE() view returns(uint256)
+func (_ZKDKGContract *ZKDKGContractCallerSession) STAKE() (*big.Int, error) {
+	return _ZKDKGContract.Contract.STAKE(&_ZKDKGContract.CallOpts)
 }
 
 // Addresses is a free data retrieval call binding the contract method 0xedf26d9b.
@@ -437,7 +461,7 @@ func (_ZKDKGContract *ZKDKGContractCallerSession) CountParticipants() (*big.Int,
 
 // FindParticipantByIndex is a free data retrieval call binding the contract method 0x9586f96a.
 //
-// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint256,uint256[2]))
+// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint64,uint256[2]))
 func (_ZKDKGContract *ZKDKGContractCaller) FindParticipantByIndex(opts *bind.CallOpts, _index *big.Int) (ZKDKGParticipant, error) {
 	var out []interface{}
 	err := _ZKDKGContract.contract.Call(opts, &out, "findParticipantByIndex", _index)
@@ -454,14 +478,14 @@ func (_ZKDKGContract *ZKDKGContractCaller) FindParticipantByIndex(opts *bind.Cal
 
 // FindParticipantByIndex is a free data retrieval call binding the contract method 0x9586f96a.
 //
-// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint256,uint256[2]))
+// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint64,uint256[2]))
 func (_ZKDKGContract *ZKDKGContractSession) FindParticipantByIndex(_index *big.Int) (ZKDKGParticipant, error) {
 	return _ZKDKGContract.Contract.FindParticipantByIndex(&_ZKDKGContract.CallOpts, _index)
 }
 
 // FindParticipantByIndex is a free data retrieval call binding the contract method 0x9586f96a.
 //
-// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint256,uint256[2]))
+// Solidity: function findParticipantByIndex(uint256 _index) view returns((uint64,uint256[2]))
 func (_ZKDKGContract *ZKDKGContractCallerSession) FindParticipantByIndex(_index *big.Int) (ZKDKGParticipant, error) {
 	return _ZKDKGContract.Contract.FindParticipantByIndex(&_ZKDKGContract.CallOpts, _index)
 }
@@ -623,16 +647,16 @@ func (_ZKDKGContract *ZKDKGContractCallerSession) NoParticipants() (*big.Int, er
 
 // Participants is a free data retrieval call binding the contract method 0x09e69ede.
 //
-// Solidity: function participants(address ) view returns(uint256 index)
-func (_ZKDKGContract *ZKDKGContractCaller) Participants(opts *bind.CallOpts, arg0 common.Address) (*big.Int, error) {
+// Solidity: function participants(address ) view returns(uint64 index)
+func (_ZKDKGContract *ZKDKGContractCaller) Participants(opts *bind.CallOpts, arg0 common.Address) (uint64, error) {
 	var out []interface{}
 	err := _ZKDKGContract.contract.Call(opts, &out, "participants", arg0)
 
 	if err != nil {
-		return *new(*big.Int), err
+		return *new(uint64), err
 	}
 
-	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+	out0 := *abi.ConvertType(out[0], new(uint64)).(*uint64)
 
 	return out0, err
 
@@ -640,15 +664,15 @@ func (_ZKDKGContract *ZKDKGContractCaller) Participants(opts *bind.CallOpts, arg
 
 // Participants is a free data retrieval call binding the contract method 0x09e69ede.
 //
-// Solidity: function participants(address ) view returns(uint256 index)
-func (_ZKDKGContract *ZKDKGContractSession) Participants(arg0 common.Address) (*big.Int, error) {
+// Solidity: function participants(address ) view returns(uint64 index)
+func (_ZKDKGContract *ZKDKGContractSession) Participants(arg0 common.Address) (uint64, error) {
 	return _ZKDKGContract.Contract.Participants(&_ZKDKGContract.CallOpts, arg0)
 }
 
 // Participants is a free data retrieval call binding the contract method 0x09e69ede.
 //
-// Solidity: function participants(address ) view returns(uint256 index)
-func (_ZKDKGContract *ZKDKGContractCallerSession) Participants(arg0 common.Address) (*big.Int, error) {
+// Solidity: function participants(address ) view returns(uint64 index)
+func (_ZKDKGContract *ZKDKGContractCallerSession) Participants(arg0 common.Address) (uint64, error) {
 	return _ZKDKGContract.Contract.Participants(&_ZKDKGContract.CallOpts, arg0)
 }
 
@@ -766,6 +790,48 @@ func (_ZKDKGContract *ZKDKGContractTransactorSession) BroadcastShares(commitment
 	return _ZKDKGContract.Contract.BroadcastShares(&_ZKDKGContract.TransactOpts, commitments, shares)
 }
 
+// Claim is a paid mutator transaction binding the contract method 0x4e71d92d.
+//
+// Solidity: function claim() returns()
+func (_ZKDKGContract *ZKDKGContractTransactor) Claim(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _ZKDKGContract.contract.Transact(opts, "claim")
+}
+
+// Claim is a paid mutator transaction binding the contract method 0x4e71d92d.
+//
+// Solidity: function claim() returns()
+func (_ZKDKGContract *ZKDKGContractSession) Claim() (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.Claim(&_ZKDKGContract.TransactOpts)
+}
+
+// Claim is a paid mutator transaction binding the contract method 0x4e71d92d.
+//
+// Solidity: function claim() returns()
+func (_ZKDKGContract *ZKDKGContractTransactorSession) Claim() (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.Claim(&_ZKDKGContract.TransactOpts)
+}
+
+// DefendShare is a paid mutator transaction binding the contract method 0x66320250.
+//
+// Solidity: function defendShare(((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
+func (_ZKDKGContract *ZKDKGContractTransactor) DefendShare(opts *bind.TransactOpts, proof ShareVerifierProof) (*types.Transaction, error) {
+	return _ZKDKGContract.contract.Transact(opts, "defendShare", proof)
+}
+
+// DefendShare is a paid mutator transaction binding the contract method 0x66320250.
+//
+// Solidity: function defendShare(((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
+func (_ZKDKGContract *ZKDKGContractSession) DefendShare(proof ShareVerifierProof) (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.DefendShare(&_ZKDKGContract.TransactOpts, proof)
+}
+
+// DefendShare is a paid mutator transaction binding the contract method 0x66320250.
+//
+// Solidity: function defendShare(((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
+func (_ZKDKGContract *ZKDKGContractTransactorSession) DefendShare(proof ShareVerifierProof) (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.DefendShare(&_ZKDKGContract.TransactOpts, proof)
+}
+
 // DisputePublicKey is a paid mutator transaction binding the contract method 0x1ece7ea8.
 //
 // Solidity: function disputePublicKey(((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
@@ -787,46 +853,25 @@ func (_ZKDKGContract *ZKDKGContractTransactorSession) DisputePublicKey(proof Key
 	return _ZKDKGContract.Contract.DisputePublicKey(&_ZKDKGContract.TransactOpts, proof)
 }
 
-// DisputeShare is a paid mutator transaction binding the contract method 0x47714650.
+// DisputeShare is a paid mutator transaction binding the contract method 0xfd781568.
 //
-// Solidity: function disputeShare(uint256 dealerIndex, uint256[] shares, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractTransactor) DisputeShare(opts *bind.TransactOpts, dealerIndex *big.Int, shares []*big.Int, proof ShareVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.contract.Transact(opts, "disputeShare", dealerIndex, shares, proof)
+// Solidity: function disputeShare(uint64 disputeeIndex, uint256[] shares) returns()
+func (_ZKDKGContract *ZKDKGContractTransactor) DisputeShare(opts *bind.TransactOpts, disputeeIndex uint64, shares []*big.Int) (*types.Transaction, error) {
+	return _ZKDKGContract.contract.Transact(opts, "disputeShare", disputeeIndex, shares)
 }
 
-// DisputeShare is a paid mutator transaction binding the contract method 0x47714650.
+// DisputeShare is a paid mutator transaction binding the contract method 0xfd781568.
 //
-// Solidity: function disputeShare(uint256 dealerIndex, uint256[] shares, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractSession) DisputeShare(dealerIndex *big.Int, shares []*big.Int, proof ShareVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.Contract.DisputeShare(&_ZKDKGContract.TransactOpts, dealerIndex, shares, proof)
+// Solidity: function disputeShare(uint64 disputeeIndex, uint256[] shares) returns()
+func (_ZKDKGContract *ZKDKGContractSession) DisputeShare(disputeeIndex uint64, shares []*big.Int) (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.DisputeShare(&_ZKDKGContract.TransactOpts, disputeeIndex, shares)
 }
 
-// DisputeShare is a paid mutator transaction binding the contract method 0x47714650.
+// DisputeShare is a paid mutator transaction binding the contract method 0xfd781568.
 //
-// Solidity: function disputeShare(uint256 dealerIndex, uint256[] shares, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractTransactorSession) DisputeShare(dealerIndex *big.Int, shares []*big.Int, proof ShareVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.Contract.DisputeShare(&_ZKDKGContract.TransactOpts, dealerIndex, shares, proof)
-}
-
-// DisputeShareInput is a paid mutator transaction binding the contract method 0x5f1a2468.
-//
-// Solidity: function disputeShareInput(address dealerAddress, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractTransactor) DisputeShareInput(opts *bind.TransactOpts, dealerAddress common.Address, proof ShareInputVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.contract.Transact(opts, "disputeShareInput", dealerAddress, proof)
-}
-
-// DisputeShareInput is a paid mutator transaction binding the contract method 0x5f1a2468.
-//
-// Solidity: function disputeShareInput(address dealerAddress, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractSession) DisputeShareInput(dealerAddress common.Address, proof ShareInputVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.Contract.DisputeShareInput(&_ZKDKGContract.TransactOpts, dealerAddress, proof)
-}
-
-// DisputeShareInput is a paid mutator transaction binding the contract method 0x5f1a2468.
-//
-// Solidity: function disputeShareInput(address dealerAddress, ((uint256,uint256),(uint256[2],uint256[2]),(uint256,uint256)) proof) returns()
-func (_ZKDKGContract *ZKDKGContractTransactorSession) DisputeShareInput(dealerAddress common.Address, proof ShareInputVerifierProof) (*types.Transaction, error) {
-	return _ZKDKGContract.Contract.DisputeShareInput(&_ZKDKGContract.TransactOpts, dealerAddress, proof)
+// Solidity: function disputeShare(uint64 disputeeIndex, uint256[] shares) returns()
+func (_ZKDKGContract *ZKDKGContractTransactorSession) DisputeShare(disputeeIndex uint64, shares []*big.Int) (*types.Transaction, error) {
+	return _ZKDKGContract.Contract.DisputeShare(&_ZKDKGContract.TransactOpts, disputeeIndex, shares)
 }
 
 // Register is a paid mutator transaction binding the contract method 0x3442af5c.
@@ -941,13 +986,13 @@ func (it *ZKDKGContractBroadcastSharesLogIterator) Close() error {
 // ZKDKGContractBroadcastSharesLog represents a BroadcastSharesLog event raised by the ZKDKGContract contract.
 type ZKDKGContractBroadcastSharesLog struct {
 	Sender           common.Address
-	BroadcasterIndex *big.Int
+	BroadcasterIndex uint64
 	Raw              types.Log // Blockchain specific contextual infos
 }
 
-// FilterBroadcastSharesLog is a free log retrieval operation binding the contract event 0xe9f361b9d754d638c67ee5a79969234d86c3c510db254b8903929d5f0bcf1fc8.
+// FilterBroadcastSharesLog is a free log retrieval operation binding the contract event 0x6f05a6347682218545d46ff134e8f64b733c55d765de818a37c5f4d7895bf90a.
 //
-// Solidity: event BroadcastSharesLog(address sender, uint256 broadcasterIndex)
+// Solidity: event BroadcastSharesLog(address sender, uint64 broadcasterIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) FilterBroadcastSharesLog(opts *bind.FilterOpts) (*ZKDKGContractBroadcastSharesLogIterator, error) {
 
 	logs, sub, err := _ZKDKGContract.contract.FilterLogs(opts, "BroadcastSharesLog")
@@ -957,9 +1002,9 @@ func (_ZKDKGContract *ZKDKGContractFilterer) FilterBroadcastSharesLog(opts *bind
 	return &ZKDKGContractBroadcastSharesLogIterator{contract: _ZKDKGContract.contract, event: "BroadcastSharesLog", logs: logs, sub: sub}, nil
 }
 
-// WatchBroadcastSharesLog is a free log subscription operation binding the contract event 0xe9f361b9d754d638c67ee5a79969234d86c3c510db254b8903929d5f0bcf1fc8.
+// WatchBroadcastSharesLog is a free log subscription operation binding the contract event 0x6f05a6347682218545d46ff134e8f64b733c55d765de818a37c5f4d7895bf90a.
 //
-// Solidity: event BroadcastSharesLog(address sender, uint256 broadcasterIndex)
+// Solidity: event BroadcastSharesLog(address sender, uint64 broadcasterIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) WatchBroadcastSharesLog(opts *bind.WatchOpts, sink chan<- *ZKDKGContractBroadcastSharesLog) (event.Subscription, error) {
 
 	logs, sub, err := _ZKDKGContract.contract.WatchLogs(opts, "BroadcastSharesLog")
@@ -994,9 +1039,9 @@ func (_ZKDKGContract *ZKDKGContractFilterer) WatchBroadcastSharesLog(opts *bind.
 	}), nil
 }
 
-// ParseBroadcastSharesLog is a log parse operation binding the contract event 0xe9f361b9d754d638c67ee5a79969234d86c3c510db254b8903929d5f0bcf1fc8.
+// ParseBroadcastSharesLog is a log parse operation binding the contract event 0x6f05a6347682218545d46ff134e8f64b733c55d765de818a37c5f4d7895bf90a.
 //
-// Solidity: event BroadcastSharesLog(address sender, uint256 broadcasterIndex)
+// Solidity: event BroadcastSharesLog(address sender, uint64 broadcasterIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) ParseBroadcastSharesLog(log types.Log) (*ZKDKGContractBroadcastSharesLog, error) {
 	event := new(ZKDKGContractBroadcastSharesLog)
 	if err := _ZKDKGContract.contract.UnpackLog(event, "BroadcastSharesLog", log); err != nil {
@@ -1075,12 +1120,14 @@ func (it *ZKDKGContractDisputeShareIterator) Close() error {
 
 // ZKDKGContractDisputeShare represents a DisputeShare event raised by the ZKDKGContract contract.
 type ZKDKGContractDisputeShare struct {
-	Raw types.Log // Blockchain specific contextual infos
+	DisputerIndex uint64
+	DisputeeIndex uint64
+	Raw           types.Log // Blockchain specific contextual infos
 }
 
-// FilterDisputeShare is a free log retrieval operation binding the contract event 0xb7826c91a05add5d90fe8271ea317b6175f4ceb465a038a9b33ad1e2fe13a7b0.
+// FilterDisputeShare is a free log retrieval operation binding the contract event 0x3cd0b2351ada9371a2fc54b89a805289579386e01979aea5ed2ccabb20c75001.
 //
-// Solidity: event DisputeShare()
+// Solidity: event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) FilterDisputeShare(opts *bind.FilterOpts) (*ZKDKGContractDisputeShareIterator, error) {
 
 	logs, sub, err := _ZKDKGContract.contract.FilterLogs(opts, "DisputeShare")
@@ -1090,9 +1137,9 @@ func (_ZKDKGContract *ZKDKGContractFilterer) FilterDisputeShare(opts *bind.Filte
 	return &ZKDKGContractDisputeShareIterator{contract: _ZKDKGContract.contract, event: "DisputeShare", logs: logs, sub: sub}, nil
 }
 
-// WatchDisputeShare is a free log subscription operation binding the contract event 0xb7826c91a05add5d90fe8271ea317b6175f4ceb465a038a9b33ad1e2fe13a7b0.
+// WatchDisputeShare is a free log subscription operation binding the contract event 0x3cd0b2351ada9371a2fc54b89a805289579386e01979aea5ed2ccabb20c75001.
 //
-// Solidity: event DisputeShare()
+// Solidity: event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) WatchDisputeShare(opts *bind.WatchOpts, sink chan<- *ZKDKGContractDisputeShare) (event.Subscription, error) {
 
 	logs, sub, err := _ZKDKGContract.contract.WatchLogs(opts, "DisputeShare")
@@ -1127,9 +1174,9 @@ func (_ZKDKGContract *ZKDKGContractFilterer) WatchDisputeShare(opts *bind.WatchO
 	}), nil
 }
 
-// ParseDisputeShare is a log parse operation binding the contract event 0xb7826c91a05add5d90fe8271ea317b6175f4ceb465a038a9b33ad1e2fe13a7b0.
+// ParseDisputeShare is a log parse operation binding the contract event 0x3cd0b2351ada9371a2fc54b89a805289579386e01979aea5ed2ccabb20c75001.
 //
-// Solidity: event DisputeShare()
+// Solidity: event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex)
 func (_ZKDKGContract *ZKDKGContractFilterer) ParseDisputeShare(log types.Log) (*ZKDKGContractDisputeShare, error) {
 	event := new(ZKDKGContractDisputeShare)
 	if err := _ZKDKGContract.contract.UnpackLog(event, "DisputeShare", log); err != nil {
@@ -1532,6 +1579,139 @@ func (_ZKDKGContract *ZKDKGContractFilterer) WatchRegistrationEndLog(opts *bind.
 func (_ZKDKGContract *ZKDKGContractFilterer) ParseRegistrationEndLog(log types.Log) (*ZKDKGContractRegistrationEndLog, error) {
 	event := new(ZKDKGContractRegistrationEndLog)
 	if err := _ZKDKGContract.contract.UnpackLog(event, "RegistrationEndLog", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// ZKDKGContractResetIterator is returned from FilterReset and is used to iterate over the raw logs and unpacked data for Reset events raised by the ZKDKGContract contract.
+type ZKDKGContractResetIterator struct {
+	Event *ZKDKGContractReset // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *ZKDKGContractResetIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(ZKDKGContractReset)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(ZKDKGContractReset)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *ZKDKGContractResetIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *ZKDKGContractResetIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// ZKDKGContractReset represents a Reset event raised by the ZKDKGContract contract.
+type ZKDKGContractReset struct {
+	Raw types.Log // Blockchain specific contextual infos
+}
+
+// FilterReset is a free log retrieval operation binding the contract event 0x6423db340205c829eeb91151b1c5d1dc6d7a2b8708b1621494e89ba90c87081e.
+//
+// Solidity: event Reset()
+func (_ZKDKGContract *ZKDKGContractFilterer) FilterReset(opts *bind.FilterOpts) (*ZKDKGContractResetIterator, error) {
+
+	logs, sub, err := _ZKDKGContract.contract.FilterLogs(opts, "Reset")
+	if err != nil {
+		return nil, err
+	}
+	return &ZKDKGContractResetIterator{contract: _ZKDKGContract.contract, event: "Reset", logs: logs, sub: sub}, nil
+}
+
+// WatchReset is a free log subscription operation binding the contract event 0x6423db340205c829eeb91151b1c5d1dc6d7a2b8708b1621494e89ba90c87081e.
+//
+// Solidity: event Reset()
+func (_ZKDKGContract *ZKDKGContractFilterer) WatchReset(opts *bind.WatchOpts, sink chan<- *ZKDKGContractReset) (event.Subscription, error) {
+
+	logs, sub, err := _ZKDKGContract.contract.WatchLogs(opts, "Reset")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(ZKDKGContractReset)
+				if err := _ZKDKGContract.contract.UnpackLog(event, "Reset", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseReset is a log parse operation binding the contract event 0x6423db340205c829eeb91151b1c5d1dc6d7a2b8708b1621494e89ba90c87081e.
+//
+// Solidity: event Reset()
+func (_ZKDKGContract *ZKDKGContractFilterer) ParseReset(log types.Log) (*ZKDKGContractReset, error) {
+	event := new(ZKDKGContractReset)
+	if err := _ZKDKGContract.contract.UnpackLog(event, "Reset", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
