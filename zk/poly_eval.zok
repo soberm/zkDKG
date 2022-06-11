@@ -1,15 +1,16 @@
 import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
-import "./utils/casts/commits_to_u64" as commits_to_u64
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
 import "./utils/casts/field_to_u64_array" as field_to_u64_array
 import "./utils/casts/u64_array_to_bool_array" as u64_array_to_bool_array
 import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
 
 from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS
-import "ecc/proofOfOwnership" as proofOfOwnership
 import "ecc/edwardsAdd" as edwardsAdd
+import "ecc/edwardsCompress" as edwardsCompress
 import "ecc/edwardsScalarMult" as edwardsScalarMult
+import "ecc/proofOfOwnership" as proofOfOwnership
 import "hashes/keccak/256bit" as keccak256
+import "utils/casts/u64_from_bits" as u64_from_bits
 import "utils/pack/bool/pack256" as pack256
 import "utils/pack/bool/unpack256" as unpack256
 
@@ -17,12 +18,20 @@ import "utils/pack/bool/unpack256" as unpack256
 const u32 N = (PARTICIPANTS + 1) / 2
 const u32 N_TIMES_8 = N * 8
 
+def compressPoint(field[2] point) -> u64[4]:
+    u64[4] result = [0; 4]
+    bool[256] compressed = edwardsCompress(point)
+    for u32 i in 0..4 do
+        result[i] = u64_from_bits(compressed[(64 * i)..(64 * (i + 1))])
+    endfor
+    return result
+
 def computeSharedKey(field secretKey, field[2] pubKey, field[N][2] commits) -> field:
     
     field[2] exchanged_key = edwardsScalarMult(unpack256(secretKey), pubKey, BABYJUBJUB_PARAMS)
    
     u64[4] x = bool_array_to_u64_array(unpack256(exchanged_key[0]))
-    u64[8] c = field_array_to_u64_array::<_,8>(commits[0])
+    u64[4] c = compressPoint(commits[0])
    
     u64[4] key_hash = keccak256([...x, ...c])
 
@@ -44,15 +53,24 @@ def evalPubPoly(field index, field[N][2] commits) -> field[2]:
 
     return expected
 
+// TODO index can be u64
 def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDisputer, private field index, private field encryptedShare, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
-    u64[4] commitsHash = keccak256(commits_to_u64::<_,N_TIMES_8>(commits))
+    u64[N * 4] compressed = [0; N * 4]
+    for u32 i in 0..N do
+        bool[256] commit = edwardsCompress(commits[i])
+        for u32 j in 0..4 do
+            compressed[i * 4 + j] = u64_from_bits(commit[(64 * j)..(64 * (j + 1))])
+        endfor
+    endfor
+
+    u64[4] commitsHash = keccak256(compressed)
 
     assert(hash == u64_array_to_field_array::<_,2>(keccak256([
         ...commitsHash,
-        ...field_array_to_u64_array::<_,8>(pubKeyProofer),
-        ...field_array_to_u64_array::<_,8>(pubKeyDisputer),
+        ...compressPoint(pubKeyProofer),
+        ...compressPoint(pubKeyDisputer),
         ...field_to_u64_array(index),
         ...field_to_u64_array(encryptedShare)
     ])))

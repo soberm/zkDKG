@@ -12,17 +12,17 @@ contract ZKDKG {
     uint16 public constant SHARES_DISPUTE_PERIOD = 10 seconds;
     uint16 public constant SHARES_DEFENSE_PERIOD = 2 minutes;
 
-    uint256 public constant STAKE = 0 ether;
+    uint public constant STAKE = 0 ether;
 
     struct Participant {
         uint64 index;
-        uint256[2] publicKey;
+        uint publicKey;
     }
 
     struct Dispute {
         uint64 disputerIndex;
         uint64 disputeeIndex;
-        uint256 share;
+        uint share;
     }
 
     enum Phase {
@@ -39,10 +39,10 @@ contract ZKDKG {
 
     mapping(address => bytes32) public commitmentHashes;
     mapping(address => bytes32) public shareHashes;
-    uint256[2][] public firstCoefficients;
+    uint256[] public firstCoefficients;
 
     address submitter;
-    uint256[2] public masterPublicKey;
+    uint256 public masterPublicKey;
     uint256 public noParticipants;
 
     ShareVerifier private shareVerifier;
@@ -69,7 +69,7 @@ contract ZKDKG {
         noParticipants = _noParticipants;
     }
 
-    function register(uint256[2] memory publicKey) public payable {
+    function register(uint publicKey) public payable {
 
         require(msg.value == STAKE, "value too low");
 
@@ -94,7 +94,7 @@ contract ZKDKG {
     }
 
     // FIXME One account can call this multiple times
-    function broadcastShares(uint256[2][] memory commitments, uint256[] memory shares) external registered {
+    function broadcastShares(uint256[] memory commitments, uint256[] memory shares) external registered {
         require(phase == Phase.BROADCAST_SUBMIT, "broadcast period has not started yet");
         require(block.timestamp <= phaseEnd, "broadcast period has expired");
 
@@ -163,10 +163,8 @@ contract ZKDKG {
             keccak256(
                 bytes.concat(
                     commitmentHashes[disputee],
-                    bytes32(participants[disputee].publicKey[0]),
-                    bytes32(participants[disputee].publicKey[1]),
-                    bytes32(participants[disputer].publicKey[0]),
-                    bytes32(participants[disputer].publicKey[1]),
+                    bytes32(participants[disputee].publicKey),
+                    bytes32(participants[disputer].publicKey),
                     bytes32(uint256(dispute.disputerIndex)),
                     bytes32(dispute.share)
                 )
@@ -184,7 +182,7 @@ contract ZKDKG {
         payNodes();
     }
 
-    function submitPublicKey(uint256[2] memory _publicKey) external registered {
+    function submitPublicKey(uint256 _publicKey) external registered {
         require(phase == Phase.BROADCAST_DISPUTE, "not in submission phase");
         require(block.timestamp > phaseEnd, "dispute period still ongoing");
 
@@ -207,8 +205,8 @@ contract ZKDKG {
 
         // FIXME wrong parameters
         uint256[5] memory input = [
-            masterPublicKey[0],
-            masterPublicKey[1],
+            masterPublicKey,
+            masterPublicKey,
             hash[0],
             hash[1],
             1

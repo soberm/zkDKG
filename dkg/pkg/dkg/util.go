@@ -4,9 +4,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+
 	"go.dedis.ch/kyber/v3"
 	"go.dedis.ch/kyber/v3/suites"
-	"math/big"
 )
 
 func HexToScalar(suite suites.Suite, hexScalar string) (kyber.Scalar, error) {
@@ -23,24 +24,17 @@ func HexToScalar(suite suites.Suite, hexScalar string) (kyber.Scalar, error) {
 	return s, nil
 }
 
-func PointToBig(point kyber.Point) ([2]*big.Int, error) {
+func PointToBig(point kyber.Point) (*big.Int, error) {
 	b, err := point.MarshalBinary()
 	if err != nil {
-		return [2]*big.Int{}, fmt.Errorf("marshal point: %w", err)
+		return nil, err
 	}
 
-	if len(b) != 64 {
-		return [2]*big.Int{}, fmt.Errorf("invalid length")
-	}
-
-	return [2]*big.Int{
-		new(big.Int).SetBytes(b[:32]),
-		new(big.Int).SetBytes(b[32:]),
-	}, nil
+	return new(big.Int).SetBytes(b), nil
 }
 
-func PointsToBig(points []kyber.Point) ([][2]*big.Int, error) {
-	values := make([][2]*big.Int, 0)
+func PointsToBig(points []kyber.Point) ([]*big.Int, error) {
+	values := make([]*big.Int, 0)
 	for _, point := range points {
 		v, err := PointToBig(point)
 		if err != nil {
@@ -51,26 +45,20 @@ func PointsToBig(points []kyber.Point) ([][2]*big.Int, error) {
 	return values, nil
 }
 
-func BigToPoint(suite suites.Suite, p [2]*big.Int) (kyber.Point, error) {
+func BigToPoint(suite suites.Suite, p *big.Int) (kyber.Point, error) {
 	point := suite.Point().Base()
 
-	x := make([]byte, 32)
-	copy(x[len(x)-len(p[0].Bytes()):], p[0].Bytes())
-
-	y := make([]byte, 32)
-	copy(y[len(y)-len(p[1].Bytes()):], p[1].Bytes())
-
-	err := point.UnmarshalBinary(append(x, y...))
+	err := point.UnmarshalBinary(p.Bytes())
 	if err != nil {
-		return nil, fmt.Errorf("unmarshal binary: %w", err)
+		return nil, err
 	}
 	return point, nil
 }
 
-func BigToPoints(suite suites.Suite, p [][2]*big.Int) ([]kyber.Point, error) {
+func BigToPoints(suite suites.Suite, p []*big.Int) ([]kyber.Point, error) {
 	points := make([]kyber.Point, 0)
-	for _, values := range p {
-		point, err := BigToPoint(suite, values)
+	for _, value := range p {
+		point, err := BigToPoint(suite, value)
 		if err != nil {
 			return nil, fmt.Errorf("big to point: %w", err)
 		}

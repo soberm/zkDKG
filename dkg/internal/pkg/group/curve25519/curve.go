@@ -175,35 +175,28 @@ func (c *curve) pointString(x, y *mod.Int) string {
 }
 
 // Encode an Edwards curve point.
-// We use little-endian encoding for consistency with Ed25519.
-/*func (c *curve) encodePoint(x, y *mod.Int) []byte {
+func (c *curve) encodePoint(x, y *mod.Int) []byte {
 
 	// Encode the y-coordinate
+	// Note that for Baby Jubjub this will already be 32 bytes
 	b, _ := y.MarshalBinary()
 
 	// Encode the sign of the x-coordinate.
-	if y.M.BitLen()&7 == 0 {
-		// No unused bits at the top of y-coordinate encoding,
-		// so we must prepend a whole byte.
-		b = append(make([]byte, 1), b...)
-	}
 	if c.coordSign(x) != 0 {
 		b[0] |= 0x80
 	}
 
-	// Convert to little-endian
-	reverse(b, b)
 	return b
-}*/
+}
 
-func (c *curve) encodePoint(x, y *mod.Int) []byte {
+/*func (c *curve) encodePoint(x, y *mod.Int) []byte {
 
 	// Encode the y-coordinate
 	bY, _ := y.MarshalBinary()
 	bX, _ := x.MarshalBinary()
 
 	return append(bX, bY...)
-}
+}*/
 
 // Decode an Edwards curve point into the given x,y coordinates.
 // Returns an error if the input does not denote a valid curve point.
@@ -215,12 +208,9 @@ func (c *curve) encodePoint(x, y *mod.Int) []byte {
 // other than the tiny ones represented by the cofactor;
 // hence Diffie-Hellman exchange can be done without subgroup checking
 // without exposing more than the least-significant bits of the scalar.
-/*func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
-
-	// Convert from little-endian
-	//fmt.Printf("decoding:\n%s\n", hex.Dump(bb))
+func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
 	b := make([]byte, len(bb))
-	reverse(b, bb)
+	copy(b, bb)
 
 	// Extract the sign of the x-coordinate
 	xsign := uint(b[0] >> 7)
@@ -239,9 +229,9 @@ func (c *curve) encodePoint(x, y *mod.Int) []byte {
 	}
 
 	return nil
-}*/
+}
 
-func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
+/*func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
 	x.SetBytes(bb[:32])
 	y.SetBytes(bb[32:])
 
@@ -249,7 +239,7 @@ func (c *curve) decodePoint(bb []byte, x, y *mod.Int) error {
 		return errors.New("invalid point")
 	}
 	return nil
-}
+}*/
 
 // Given a y-coordinate, solve for the x-coordinate on the curve,
 // using the characteristic equation rewritten as:

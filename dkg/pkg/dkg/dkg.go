@@ -207,7 +207,7 @@ func (d *DistKeyGenerator) Register() error {
 
 	pub, err := PointToBig(d.pub)
 	if err != nil {
-		return fmt.Errorf("pub to big: %w", err)
+		return fmt.Errorf("marshal public key: %w", err)
 	}
 
 	tx, err := d.contract.Register(opts, pub)
@@ -224,10 +224,12 @@ func (d *DistKeyGenerator) Register() error {
 		return errors.New("receipt status failed")
 	}
 
-	d.index, err = d.contract.Participants(nil, crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey))
+	participant, err := d.contract.Participants(nil, crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey))
 	if err != nil {
 		return fmt.Errorf("participants: %w", err)
 	}
+
+	d.index = participant.Index
 
 	log.Infof("Registered as participant with index %d", d.index)
 	return nil
@@ -348,7 +350,7 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 
 	poly := share.NewPubPoly(d.suite, nil, distKeyShare.Commits)
 	fig := d.suite.Point().Base().Mul(distKeyShare.Share.V, nil)
-	i := int(d.index)
+	i := int(d.index) - 1
 
 	test := poly.Eval(i)
 
@@ -359,7 +361,7 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 	return distKeyShare.Public(), nil
 }
 
-func (d *DistKeyGenerator) SubmitPublicKey(pub [2]*big.Int) error {
+func (d *DistKeyGenerator) SubmitPublicKey(pub *big.Int) error {
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 	if err != nil {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
@@ -445,7 +447,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	dealerIndex := broadcastSharesLog.BroadcasterIndex
 	pubKeyDealer := d.participants[dealerIndex].pub
 
-	commitments := inputs[0].([][2]*big.Int)
+	commitments := inputs[0].([]*big.Int)
 	shares := inputs[1].([]*big.Int)
 
 	commits, err := BigToPoints(d.suite, commitments)
@@ -593,11 +595,10 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 
 	hashInput = append(hashInput, commitmentsHash[:]...)
 
-	hashInput = append(hashInput, pubProoferX.V.FillBytes(buf)...)
-	hashInput = append(hashInput, pubProoferY.V.FillBytes(buf)...)
-
-	hashInput = append(hashInput, pubDisputerX.V.FillBytes(buf)...)
-	hashInput = append(hashInput, pubDisputerY.V.FillBytes(buf)...)
+	pubProoferBin, _ := pubProofer.MarshalBinary()
+	pubDisputerBin, _ := pubDisputer.MarshalBinary()
+	hashInput = append(hashInput, pubProoferBin...)
+	hashInput = append(hashInput, pubDisputerBin...)
 
 	hashInput = append(hashInput, index.FillBytes(buf)...)
 
@@ -648,7 +649,7 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 	return nil
 }
 
-func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk [2]*big.Int) error {
+func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk *big.Int) error {
 	sink := make(chan *ZKDKGContractPublicKeySubmission)
 	defer close(sink)
 
@@ -678,7 +679,7 @@ func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk [
 	}
 }
 
-func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGContractPublicKeySubmission, computedPk [2]*big.Int) error {
+func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGContractPublicKeySubmission, computedPk *big.Int) error {
 	submissionTx, _, err := d.client.TransactionByHash(context.Background(), pkSubmissionLog.Raw.TxHash)
 	if err != nil {
 		return fmt.Errorf("transaction by hash: %w", err)
@@ -700,9 +701,9 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGCo
 		return fmt.Errorf("unpack inputs: %w", err)
 	}
 
-	submittedPk := inputs[0].([2]*big.Int)
+	submittedPk := inputs[0].(*big.Int)
 
-	if computedPk[0].Cmp(submittedPk[0]) == 0 && computedPk[1].Cmp(submittedPk[1]) == 0 {
+	if computedPk.Cmp(submittedPk) == 0 {
 		log.Infoln("Public key valid")
 		return nil
 	}
@@ -729,10 +730,10 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGCo
 			return fmt.Errorf("coefficient to big: %w", err)
 		}
 		firstCoefficients = append(firstCoefficients, bin...)
-		args = append(args, point[:]...)
+		args = append(args, point)
 	}
 
-	args = append(args, submittedPk[:]...)
+	args = append(args, submittedPk)
 
 	rawHash := crypto.Keccak256(firstCoefficients)
 	hash := []*big.Int{
@@ -844,11 +845,11 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	commitsString := "Commitments"
 	if d.rogue {
 		commitsString = "Fake commitments"
-		commits[0].Null()
+		commits[0].Neg(commits[0])
 	}
 
 	d.commitments[d.index] = commits
-	d.shares[d.index] = d.priPoly.Eval(int(d.index)).V
+	d.shares[d.index] = d.priPoly.Eval(int(d.index) - 1).V
 
 	commitments, err := PointsToBig(commits)
 	if err != nil {

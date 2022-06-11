@@ -90,12 +90,11 @@ main() {
 
             flags=()
             if (( i == 1 )); then # The 1st node emits invalid commitments
-                flags+=("--rogue")
+                flags+=("--rogue" )
+                flags+=("--id-pipe=$containerPipe")
             fi
 
-            if (( i == 2 )); then # The 2nd node is the only node that should compute the proof
-                flags+=("--id-pipe=$containerPipe")
-            else
+            if (( i != 2 )); then # The 2nd node is the only node that should compute the proof
                 flags+=("--ignore-invalid")
             fi
 
