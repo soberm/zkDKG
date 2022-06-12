@@ -48,7 +48,8 @@ func PointsToBig(points []kyber.Point) ([]*big.Int, error) {
 func BigToPoint(suite suites.Suite, p *big.Int) (kyber.Point, error) {
 	point := suite.Point().Base()
 
-	err := point.UnmarshalBinary(p.Bytes())
+	buf := make([]byte, 32)
+	err := point.UnmarshalBinary(p.FillBytes(buf))
 	if err != nil {
 		return nil, err
 	}
