@@ -48,11 +48,12 @@ type DistKeyGenerator struct {
 	rogue			    bool
 	ignoreInvalid	    bool
 	disputed			bool
+	broadcastOnly		bool
 }
 
 const bufferTimeInSecs uint16 = 2
 
-func NewDistributedKeyGenerator(config *Config, idPipe string, rogue bool, ignoreInvalid bool) (*DistKeyGenerator, error) {
+func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInvalid, broadcastOnly bool) (*DistKeyGenerator, error) {
 
 	param := ParamBabyJubJub()
 	curve := &curve25519.ProjectiveCurve{}
@@ -113,28 +114,37 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue bool, ignor
 		rogue:  			 rogue,
 		ignoreInvalid:		 ignoreInvalid,
 		disputed: 			 false,
+		broadcastOnly:		 broadcastOnly,
 	}, nil
 
 }
 
 func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 
 	log.Info("Generating distributed private key...")
 
-	go func() {
-		if err := d.WatchBroadcastSharesLog(ctx); err != nil {
-			log.Errorf("Watching broadcast shares log failed: %v", err)
-		}
-		cancel()
-	}()
+	distributionEnd := make(chan bool, 1)
+	defer close(distributionEnd)
 
-	go func() {
-		if err := d.WatchDisputeShareLog(ctx); err != nil {
-			log.Errorf("Watching dispute share log failed: %v", err)
-		}
-		cancel()
-	}()
+	if !d.broadcastOnly {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+
+		go func() {
+			if err := d.WatchBroadcastSharesLog(ctx, distributionEnd); err != nil {
+				log.Errorf("Watching broadcast shares log failed: %v", err)
+			}
+			cancel()
+		}()
+	
+		go func() {
+			if err := d.WatchDisputeShareLog(ctx); err != nil {
+				log.Errorf("Watching dispute share log failed: %v", err)
+			}
+			cancel()
+		}()
+	}
 
 	if err := d.RegisterAndWait(ctx); err != nil {
 		return nil, fmt.Errorf("register and wait: %v", err)
@@ -144,8 +154,12 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		return nil, fmt.Errorf("collect participants: %w", err)
 	}
 
-	if err := d.BroadcastAndWait(ctx); err != nil {
+	if err := d.BroadcastAndWait(ctx, distributionEnd); err != nil {
 		return nil, fmt.Errorf("broadcast and wait: %v", err)
+	}
+
+	if d.broadcastOnly {
+		return nil, nil
 	}
 
 	disputeEnd := d.DisputeSharePeriodEnd().C
@@ -242,13 +256,13 @@ func (d *DistKeyGenerator) CollectParticipants() error {
 		return fmt.Errorf("count participants: %w", err)
 	}
 
+	log.Info("Collecting participants...")
+
 	for i := uint64(1); i <= count.Uint64(); i++ {
 		participant, err := d.contract.FindParticipantByIndex(nil, big.NewInt(int64(i)))
 		if err != nil {
 			return fmt.Errorf("find participants by index: %w", err)
 		}
-
-		log.Printf("Adding participant %+v", participant)
 
 		pub, err := BigToPoint(d.suite, participant.PublicKey)
 		if err != nil {
@@ -296,7 +310,7 @@ func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
 	}
 }
 
-func (d *DistKeyGenerator) BroadcastAndWait(ctx context.Context) error {
+func (d *DistKeyGenerator) BroadcastAndWait(ctx context.Context, distributionEnd chan<- bool) error {
 	distributionEndLogs := make(chan *ZKDKGContractDistributionEndLog)
 	defer close(distributionEndLogs)
 
@@ -311,9 +325,12 @@ func (d *DistKeyGenerator) BroadcastAndWait(ctx context.Context) error {
 	}
 	defer sub.Unsubscribe()
 
-	log.Info("Broadcasting commitments and shares...")
 	if err := d.DistributeShares(); err != nil {
 		return fmt.Errorf("distribute shares: %w", err)
+	}
+
+	if d.broadcastOnly {
+		return nil
 	}
 
 	log.Info("Waiting until distribution is finished...")
@@ -321,6 +338,8 @@ func (d *DistKeyGenerator) BroadcastAndWait(ctx context.Context) error {
 	for {
 		select {
 		case <-distributionEndLogs:
+			log.Info("Received distribution end log")
+			distributionEnd <- true
 			return nil
 		case err = <-sub.Err():
 			return err
@@ -386,7 +405,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub *big.Int) error {
 	return nil
 }
 
-func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
+func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd <-chan bool) error {
 	sink := make(chan *ZKDKGContractBroadcastSharesLog)
 	defer close(sink)
 
@@ -404,7 +423,7 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
 	for {
 		select {
 		case event := <-sink:
-			if err := d.HandleBroadcastSharesLog(event); err != nil {
+			if err := d.HandleBroadcastSharesLog(event, distributionEnd); err != nil {
 				return fmt.Errorf("handle event: %v", err)
 			}
 		case err = <-sub.Err():
@@ -415,7 +434,7 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context) error {
 	}
 }
 
-func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog) error {
+func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd <-chan bool) error {
 
 	accountAddress := crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey)
 	if accountAddress == broadcastSharesLog.Sender {
@@ -452,19 +471,25 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	commits, err := BigToPoints(d.suite, commitments)
 	if err != nil {
-		returnedErr := fmt.Errorf("received invalid commits from dealer %d", dealerIndex)
+		err := fmt.Errorf("received invalid commits from dealer %d", dealerIndex)
 
 		if d.ignoreInvalid {
-			return returnedErr
+			return err
 		}
 
-		log.Infoln("Disputing invalid commits")
+		log.Info("Starting dispute after distribution end")
 
-		if err := d.DisputeShare(dealerIndex, shares); err != nil {
-			return fmt.Errorf("%v: dispute share: %v", returnedErr, err)
-		}
+		go func() {
+			<-distributionEnd
 
-		return returnedErr
+			log.Infoln("Disputing invalid commits")
+
+			if err := d.DisputeShare(dealerIndex, shares); err != nil {
+				log.Errorf("Dispute commits: %v", err)
+			}
+		}()
+
+		return nil
 	}
 
 	i := d.index
@@ -490,17 +515,21 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	if pubPoly.Check(fi) {
 		log.Infof("Received valid share from dealer %v", dealerIndex)
 	} else {
-		returnedErr := fmt.Errorf("received invalid share from dealer %v", dealerIndex)
+		err := fmt.Errorf("received invalid share from dealer %v", dealerIndex)
 
 		if d.ignoreInvalid {
-			return returnedErr
+			return err
 		}
 
-		if err := d.DisputeShare(dealerIndex, shares); err != nil {
-			return fmt.Errorf("%v: dispute share: %w", returnedErr, err)
-		}
+		go func() {
+			<-distributionEnd
 
-		return returnedErr
+			if err := d.DisputeShare(dealerIndex, shares); err != nil {
+				log.Errorf("Dispute share: %v", err)
+			}
+		}()
+
+		return nil
 	}
 
 	d.shares[dealerIndex] = fi.V
@@ -544,7 +573,7 @@ func (d *DistKeyGenerator) WatchDisputeShareLog(ctx context.Context) error {
 
 func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContractDisputeShare) error {
 	if d.index != disputeShareEvent.DisputeeIndex {
-		log.Info("Received dispute for other participant, aborting")
+		log.Infof("Received dispute for dealer %d, aborting", disputeShareEvent.DisputeeIndex)
 		return nil
 	}
 
@@ -808,8 +837,6 @@ func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
 	for i, commitments := range d.commitments {
 		sh = sh.Add(sh, d.shares[i])
 		pubPoly := share.NewPubPoly(d.suite, nil, commitments)
-		_, c := pubPoly.Info()
-		log.Infof("Adding commitments: %v", c)
 		if pub == nil {
 			pub = pubPoly
 			continue
@@ -836,15 +863,15 @@ func (d *DistKeyGenerator) DistributeShares() error {
 		return fmt.Errorf("threshold: %w", err)
 	}
 
+	log.Info("Generating commitments and shares...")
+
 	secret := d.suite.Scalar().Pick(d.suite.RandomStream())
 	d.priPoly = share.NewPriPoly(d.suite, int(threshold.Int64()), secret, d.suite.RandomStream())
 	pubPoly := d.priPoly.Commit(nil)
 
 	_, commits := pubPoly.Info()
 
-	commitsString := "Commitments"
 	if d.rogue {
-		commitsString = "Fake commitments"
 		commits[0].Neg(commits[0])
 	}
 
@@ -855,8 +882,6 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	if err != nil {
 		return fmt.Errorf("points to big: %w", err)
 	}
-
-	log.Infof("%s: %v", commitsString, commits)
 
 	shares := make([]*big.Int, 0)
 	for i := uint64(1); i <= uint64(len(d.participants)); i++ {

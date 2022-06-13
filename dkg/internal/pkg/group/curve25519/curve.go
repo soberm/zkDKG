@@ -178,8 +178,13 @@ func (c *curve) pointString(x, y *mod.Int) string {
 func (c *curve) encodePoint(x, y *mod.Int) []byte {
 
 	// Encode the y-coordinate
-	// Note that for Baby Jubjub this will already be 32 bytes
 	b, _ := y.MarshalBinary()
+
+	if y.M.BitLen()&7 == 0 {
+		// No unused bits at the top of y-coordinate encoding,
+		// so we must prepend a whole byte.
+		b = append(make([]byte, 1), b...)
+	}
 
 	// Encode the sign of the x-coordinate.
 	if c.coordSign(x) != 0 {

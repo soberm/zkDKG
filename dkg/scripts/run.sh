@@ -94,8 +94,12 @@ main() {
                 flags+=("--id-pipe=$containerPipe")
             fi
 
-            if (( i != 2 )); then # The 2nd node is the only node that should compute the proof
+            if (( i != 2 )); then # The 2nd node is the only node that should dispute the invalid broadcast
                 flags+=("--ignore-invalid")
+            fi
+
+            if (( i != 1 && i != 2 )); then
+                flags+=("--broadcast-only")
             fi
 
             echo "$config" | go run ./cmd/ -c /dev/stdin ${flags[@]} |& tee "$buildDir"/node_$i.log &
