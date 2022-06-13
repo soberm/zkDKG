@@ -1,7 +1,0 @@
-{
-  "EthereumNode":       "ws://127.0.0.1:8545",
-  "EthereumPrivateKey": "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-  "DkgPrivateKey":      "147f0309b0587059c68ae43949192c6dc2222210d5105777a512dcdd373ce1ab",
-  "MountSource": "/home/michael/TUWien/PhD/cdl_bot/zkDKG/zk/build/poly_eval",
-  "ContractAddress":    "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
-}
