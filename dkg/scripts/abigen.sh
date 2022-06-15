@@ -7,4 +7,4 @@ if ! which abigen >/dev/null; then
   exit 1
 fi
 
-abigen --abi ../../contracts/artifacts/contracts/ZKDKG.sol/ZKDKG.abi --pkg dkg --type ZKDKGContract --out ../pkg/dkg/contract.go
+abigen --abi ../../contracts/abi/ZKDKG.json --pkg dkg --type ZKDKGContract --out ../pkg/dkg/contract.go
