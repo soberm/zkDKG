@@ -1,6 +1,6 @@
-import "@nomiclabs/hardhat-ethers";
 import "hardhat-abi-exporter";
 import "./plugins/abigen-exporter";
+import "./plugins/deploy";
 
 import type {HardhatUserConfig} from "hardhat/config";
 
