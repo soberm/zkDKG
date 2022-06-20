@@ -2,6 +2,7 @@
 
 cd "$(dirname $0)"/../.. || exit 1
 
+generateOnly=false
 start=3
 end=3
 stepSize=3
@@ -15,7 +16,7 @@ declare -A goPids=()
 trap cleanup EXIT
 
 main() {
-    parse_input "$1"
+    parse_input "$@"
 
     buildRoot="$root"/build
     cidFile="$buildRoot"/cid
@@ -50,16 +51,19 @@ main() {
         ../zk/scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
-        log="$buildDir"/hardhat.log
         containerPipe="$buildDir"/container_pipe
+        declare -a ethPrivs
 
-        NODE_PATH=./node_modules npx hardhat node > "$log" &
-        nodePid=$!
+        if ! $generateOnly; then
+            log="$buildDir"/hardhat.log
+            NODE_PATH=./node_modules npx hardhat node > "$log" &
+            nodePid=$!
 
-        # Retrieve the private keys for the accounts from the log of the Hardhat node
-        ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
+            # Retrieve the private keys for the accounts from the log of the Hardhat node
+            ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
 
-        npx hardhat --network localhost run ./scripts/deploy.js
+            npx hardhat --network localhost run ./scripts/deploy.js
+        fi
 
         if [[ ! -p $containerPipe ]]; then
             rm -f "$containerPipe"
@@ -70,41 +74,35 @@ main() {
         local goPids=()
         cd ../dkg/
 
-        for ((i = 1; i <= participants; i++)); do
+        if $generateOnly; then
+            generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
+            goPids[0]=$!
+        else
+            for ((i = 1; i <= participants; i++)); do
 
-            # Delay node starts so that gas estimation for the register transaction is accurate
-            if (( i != 1 )); then
-                sleep 2
-            fi
+                # Delay node starts so that gas estimation for the register transaction is accurate
+                if (( i == participants )); then
+                    sleep 1
+                fi
 
-            # Use a constant hex string and add the participant index
-            dkgPriv=$(echo "obase=16;ibase=16;147F0309B0587059C68AE43949192C6DC2222210D5105777A512DCDD373CE1AA + $(echo "obase=16;$i" | bc)" | bc)
+                flags=()
+                if (( i == 1 )); then # The 1st node emits invalid commitments
+                    flags+=("--rogue" )
+                    flags+=("--id-pipe=$containerPipe")
+                fi
 
-            config="{
-                \"EthereumNode\":       \"ws://127.0.0.1:8545\",
-                \"EthereumPrivateKey\": \"${ethPrivs[$i - 1]}\",
-                \"DkgPrivateKey\":      \"$dkgPriv\",
-                \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
-                \"MountSource\":        \"$(readlink -e ../build/$participants/)\"
-            }"
+                if (( i != 2 )); then # The 2nd node is the only node that should dispute the invalid broadcast
+                    flags+=("--ignore-invalid")
+                fi
 
-            flags=()
-            if (( i == 1 )); then # The 1st node emits invalid commitments
-                flags+=("--rogue" )
-                flags+=("--id-pipe=$containerPipe")
-            fi
+                if (( i != 1 && i != 2 )); then
+                    flags+=("--broadcast-only")
+                fi
 
-            if (( i != 2 )); then # The 2nd node is the only node that should dispute the invalid broadcast
-                flags+=("--ignore-invalid")
-            fi
-
-            if (( i != 1 && i != 2 )); then
-                flags+=("--broadcast-only")
-            fi
-
-            echo "$config" | go run ./cmd/ -c /dev/stdin ${flags[@]} |& tee "$buildDir"/node_$i.log &
-            goPids[$i]=$!
-        done
+                generate_config $i $participants | go run ./cmd/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/node_$i.log &
+                goPids[$i]=$!
+            done
+        fi
 
         while read dockerId; do
             collect_container_stats "$buildDir" $dockerId
@@ -116,12 +114,28 @@ main() {
             wait $pid
         done
 
-        kill $nodePid
-        unset nodePid
+        if ! $generateOnly; then
+            kill $nodePid
+            unset nodePid
+        fi
     done
 }
 
 parse_input() {
+    local args=$(getopt -a -n run -o g --long generate-only: -- "$@")
+    if [[ $? != 0 ]]; then
+        usage
+    fi
+    eval set -- "$args"
+
+    while :
+    do
+        case "$1" in
+            -g | --generate-only)   generateOnly=true; shift;;
+            --)                     shift; break ;;
+        esac
+    done
+
     local singleRegex="^[0-9]+$"
     local rangeRegex="^\[([[:digit:]]+),([[:digit:]]+)(,([[:digit:]]+))?\]$"
 
@@ -135,8 +149,21 @@ parse_input() {
             stepSize=${BASH_REMATCH[4]}
         fi
     else
-        echo "Wrong input" >&2 && exit 1
+        usage
     fi
+}
+
+generate_config() {
+    # Use a constant hex string and add the participant index
+    dkgPriv=$(echo "obase=16;ibase=16;147F0309B0587059C68AE43949192C6DC2222210D5105777A512DCDD373CE1AA + $(echo "obase=16;$1" | bc)" | bc)
+
+    echo "{
+        \"EthereumNode\":       \"ws://127.0.0.1:8545\",
+        \"EthereumPrivateKey\": \"${ethPrivs[$1 - 1]}\",
+        \"DkgPrivateKey\":      \"$dkgPriv\",
+        \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
+        \"MountSource\":        \"$(readlink -e ../build/$2/)\"
+    }"
 }
 
 collect_container_stats() {
@@ -153,6 +180,11 @@ cleanup() {
     if [[ -n $cadvisorId ]]; then
         docker kill $cadvisorId > /dev/null
     fi    
+}
+
+usage() {
+    echo "Usage: run [ -g | --generate-only ] participant-range"
+    exit 2
 }
 
 main "$@"
