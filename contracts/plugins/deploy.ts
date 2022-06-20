@@ -3,7 +3,7 @@ import "@nomiclabs/hardhat-ethers";
 
 task("deploy", "Deploy the ZKDKG contract(s)")
     .addPositionalParam("participants", "the number of participants for the distributed key generation", undefined, types.int, false)
-    .setAction(async (args, env, _) => {
+    .setAction(async ({participants}, env, _) => {
         const KEYVERIFIER = await env.ethers.getContractFactory("KeyVerifier");
         const keyVerifier = await KEYVERIFIER.deploy();
 
@@ -17,7 +17,7 @@ task("deploy", "Deploy the ZKDKG contract(s)")
         console.log("ShareVerifier deployed to:", shareVerifier.address);
 
         const ZKDKG = await env.ethers.getContractFactory("ZKDKG");
-        const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, args.participants);
+        const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, participants);
 
         await zkDKG.deployed();
 

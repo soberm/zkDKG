@@ -56,13 +56,13 @@ main() {
 
         if ! $generateOnly; then
             log="$buildDir"/hardhat.log
-            NODE_PATH=./node_modules npx hardhat node > "$log" &
+            NODE_PATH=./node_modules npx hardhat launch $participants > "$log" &
             nodePid=$!
 
             # Retrieve the private keys for the accounts from the log of the Hardhat node
             ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
 
-            npx hardhat --network localhost deploy --participants $participants
+            npx hardhat --network localhost deploy $participants
         fi
 
         if [[ ! -p $containerPipe ]]; then

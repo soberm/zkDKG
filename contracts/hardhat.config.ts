@@ -1,6 +1,7 @@
 import "hardhat-abi-exporter";
 import "./plugins/abigen-exporter";
 import "./plugins/deploy";
+import "./plugins/launcher";
 
 import type {HardhatUserConfig} from "hardhat/config";
 
@@ -11,13 +12,6 @@ const config: HardhatUserConfig = {
     only: ["ZKDKG"],
   },
   solidity: "0.8.4",
-  networks: {
-    hardhat: {
-      accounts: {
-        count: 300,
-      },
-    },
-  },
 };
 
 export default config;
