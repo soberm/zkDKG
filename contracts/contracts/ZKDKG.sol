@@ -271,17 +271,12 @@ contract ZKDKG {
         return index != 0 && addresses[index - 1] == _addr;
     }
 
-    function countParticipants() external view returns (uint256) {
-        return addresses.length;
-    }
-
-    function findParticipantByIndex(uint256 _index)
-        public
-        view
-        returns (Participant memory)
-    {
-        require(_index >= 1 && _index <= addresses.length, "not found");
-        return participants[addresses[_index - 1]];
+    function publicKeys() external view returns (uint[] memory) {
+        uint[] memory results = new uint[](addresses.length);
+        for (uint i = 0; i < addresses.length; i++) {
+            results[i] = participants[addresses[i]].publicKey;
+        }
+        return results;
     }
 
     function threshold() public view returns (uint256) {

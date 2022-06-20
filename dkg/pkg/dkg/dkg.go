@@ -251,20 +251,15 @@ func (d *DistKeyGenerator) Register() error {
 
 func (d *DistKeyGenerator) CollectParticipants() error {
 
-	count, err := d.contract.CountParticipants(nil)
-	if err != nil {
-		return fmt.Errorf("count participants: %w", err)
-	}
-
 	log.Info("Collecting participants...")
 
-	for i := uint64(1); i <= count.Uint64(); i++ {
-		participant, err := d.contract.FindParticipantByIndex(nil, big.NewInt(int64(i)))
-		if err != nil {
-			return fmt.Errorf("find participants by index: %w", err)
-		}
+	pks, err := d.contract.PublicKeys(nil)
+	if err != nil {
+		return fmt.Errorf("collect public keys: %w", err)
+	}
 
-		pub, err := BigToPoint(d.suite, participant.PublicKey)
+	for i := uint64(1); i <= uint64(len(pks)); i++ {
+		pub, err := BigToPoint(d.suite, pks[i-1])
 		if err != nil {
 			return fmt.Errorf("big to point: %w", err)
 		}
