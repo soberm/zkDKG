@@ -1,4 +1,4 @@
-const hre = require("hardhat");
+import hre from "hardhat";
 
 async function main() {
   const KEYVERIFIER = await hre.ethers.getContractFactory("KeyVerifier");
@@ -14,7 +14,7 @@ async function main() {
   console.log("ShareVerifier deployed to:", shareVerifier.address);
 
   const ZKDKG = await hre.ethers.getContractFactory("ZKDKG");
-  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, 3);
+  const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, 200);
 
   await zkDKG.deployed();
 
