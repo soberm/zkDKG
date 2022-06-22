@@ -159,7 +159,7 @@ generate_config() {
         \"EthereumPrivateKey\": \"${ethPrivs[$1 - 1]}\",
         \"DkgPrivateKey\":      \"$dkgPriv\",
         \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
-        \"MountSource\":        \"$(readlink -e ../build/$2/)\"
+        \"MountSource\":        \"$(readlink -e ../build/$2/zk)\"
     }"
 }
 

@@ -4,7 +4,7 @@ cd "$(dirname "$0")"/../../ || exit 1
 
 participants=$1
 
-buildRoot=./build/$participants
+buildRoot=./build/$participants/zk
 contracts=./contracts/contracts
 
 mkdir -p $buildRoot
