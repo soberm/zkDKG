@@ -6,7 +6,8 @@ generateOnly=false
 start=3
 end=3
 stepSize=3
-containerIndex=1
+containerIndex=0
+containerCsvFiles=("poly_eval_witness" "poly_eval_proof" "key_deriv_witness" "key_deriv_proof")
 root="$(pwd)"
 
 declare cadvisorId
@@ -161,7 +162,7 @@ generate_config() {
 }
 
 collect_container_stats() {
-    local csv="$1"/$((containerIndex++)).csv
+    local csv="$1"/${containerCsvFiles[containerIndex++]}.csv
     echo "time,memory_usage" > "$csv"
     perl -ne "print if s/^cName=$2(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
 }
