@@ -4,6 +4,8 @@ import "@nomiclabs/hardhat-ethers";
 task("deploy", "Deploy the ZKDKG contract(s)")
     .addPositionalParam("participants", "the number of participants for the distributed key generation", undefined, types.int, false)
     .setAction(async ({participants}, env, _) => {
+        await env.run("compile");
+
         const KEYVERIFIER = await env.ethers.getContractFactory("KeyVerifier");
         const keyVerifier = await KEYVERIFIER.deploy();
 
