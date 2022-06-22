@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/iden3/go-iden3-crypto/poseidon"
 	log "github.com/sirupsen/logrus"
 	"go.dedis.ch/kyber/v3"
 	"go.dedis.ch/kyber/v3/group/mod"
@@ -967,22 +968,17 @@ func (d *DistKeyGenerator) PreSharedKey(privateKey kyber.Scalar, publicKey kyber
 	pre := DhExchange(d.suite, privateKey, publicKey)
 
 	sharedKey, _ := pre.(*curve25519.ProjPoint)
-	x, _ := sharedKey.GetXY()
-	b, err := x.MarshalBinary()
+	sharedKeyX, _ := sharedKey.GetXY()
+
+	commit, _ := commits[0].(*curve25519.ProjPoint)
+	commitX, _ := commit.GetXY()
+
+	hash, err := poseidon.Hash([]*big.Int{&sharedKeyX.V, &commitX.V})
 	if err != nil {
-		return nil, fmt.Errorf("marshal binary: %w", err)
+		return nil, fmt.Errorf("poseidon: %w", err)
 	}
 
-	commitsBin, err := commits[0].MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("marshal commit: %w", err)
-	}
-
-	hash := crypto.Keccak256Hash(
-		b,
-		commitsBin,
-	)
-	return mod.NewInt(new(big.Int).SetBytes(hash.Bytes()), &d.curveParams.P), nil
+	return mod.NewInt(hash, &d.curveParams.P), nil
 }
 
 func (d *DistKeyGenerator) estimateGas(ctx context.Context, fn string, args ...interface{}) (uint64, error) {
