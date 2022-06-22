@@ -79,12 +79,6 @@ main() {
             goPids[0]=$!
         else
             for ((i = 1; i <= participants; i++)); do
-
-                # Delay node starts so that gas estimation for the register transaction is accurate
-                if (( i == participants )); then
-                    sleep 1
-                fi
-
                 flags=()
                 if (( i == 1 )); then # The 1st node emits invalid commitments
                     flags+=("--rogue" )

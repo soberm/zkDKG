@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,7 +37,10 @@ type DistKeyGenerator struct {
 	client              *ethclient.Client
 	chainID             *big.Int
 	contract            *ZKDKGContract
-	ethereumPrivateKey  *ecdsa.PrivateKey
+	contractAbi			abi.ABI
+	contractAddress		common.Address
+	ethereumAddress  	common.Address
+	ethereumPrivateKey	*ecdsa.PrivateKey
 	long                kyber.Scalar
 	pub                 kyber.Point
 	participants        map[uint64]*Participant
@@ -70,7 +74,14 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		return nil, fmt.Errorf("chainID: %v", err)
 	}
 
-	contract, err := NewZKDKGContract(common.HexToAddress(config.ContractAddress), client)
+	contractAbi, err := abi.JSON(strings.NewReader(ZKDKGContractMetaData.ABI))
+	if err != nil {
+		return nil, fmt.Errorf("read abi: %v", err)
+	}
+
+	contractAddress := common.HexToAddress(config.ContractAddress)
+
+	contract, err := NewZKDKGContract(contractAddress, client)
 	if err != nil {
 		return nil, fmt.Errorf("zkDKG contract: %v", err)
 	}
@@ -79,6 +90,8 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 	if err != nil {
 		return nil, fmt.Errorf("hex to ecdsa: %v", err)
 	}
+
+	ethereumPublicKey := crypto.PubkeyToAddress(ethereumPrivateKey.PublicKey)
 
 	long, err := HexToScalar(suite, config.DkgPrivateKey)
 	if err != nil {
@@ -104,6 +117,9 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		client:              client,
 		chainID:             chainID,
 		contract:            contract,
+		contractAbi: 		 contractAbi,
+		contractAddress: 	 contractAddress,
+		ethereumAddress:     ethereumPublicKey,
 		ethereumPrivateKey:  ethereumPrivateKey,
 		long:                long,
 		pub:                 suite.Point().Mul(long, nil),
@@ -212,7 +228,7 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	return pub, nil
 }
 
-func (d *DistKeyGenerator) Register() error {
+func (d *DistKeyGenerator) Register(ctx context.Context) error {
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 	if err != nil {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
@@ -223,6 +239,13 @@ func (d *DistKeyGenerator) Register() error {
 	if err != nil {
 		return fmt.Errorf("marshal public key: %w", err)
 	}
+
+	estimate, err := d.estimateGas(ctx, "register", pub)
+	if err != nil {
+		return fmt.Errorf("estimate gas: %w", err)
+	}
+
+	opts.GasLimit = estimate + 30000
 
 	tx, err := d.contract.Register(opts, pub)
 	if err != nil {
@@ -238,7 +261,7 @@ func (d *DistKeyGenerator) Register() error {
 		return errors.New("receipt status failed")
 	}
 
-	participant, err := d.contract.Participants(nil, crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey))
+	participant, err := d.contract.Participants(nil, d.ethereumAddress)
 	if err != nil {
 		return fmt.Errorf("participants: %w", err)
 	}
@@ -287,7 +310,7 @@ func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
 	}
 	defer sub.Unsubscribe()
 
-	if err := d.Register(); err != nil {
+	if err := d.Register(ctx); err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
 
@@ -430,9 +453,7 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distribu
 }
 
 func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd <-chan bool) error {
-
-	accountAddress := crypto.PubkeyToAddress(d.ethereumPrivateKey.PublicKey)
-	if accountAddress == broadcastSharesLog.Sender {
+	if d.ethereumAddress == broadcastSharesLog.Sender {
 		log.Infof("Ignored own broadcast")
 		return nil
 	}
@@ -904,7 +925,12 @@ func (d *DistKeyGenerator) DistributeShares() error {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
 	}
 	opts.GasPrice = big.NewInt(1000000000)
-	opts.GasLimit = 200000
+
+	estimate, err := d.estimateGas(context.Background(), "broadcastShares", commitments, shares)
+	if err != nil {
+		return fmt.Errorf("estimate gas: %w", err)
+	}
+	opts.GasLimit = estimate + 30000
 
 	tx, err := d.contract.BroadcastShares(opts, commitments, shares)
 	if err != nil {
@@ -938,7 +964,7 @@ func (d *DistKeyGenerator) EncryptedPrivateShare(i uint64, commits []kyber.Point
 }
 
 func (d *DistKeyGenerator) PreSharedKey(privateKey kyber.Scalar, publicKey kyber.Point, commits []kyber.Point) (kyber.Scalar, error) {
-	pre := dhExchange(d.suite, privateKey, publicKey)
+	pre := DhExchange(d.suite, privateKey, publicKey)
 
 	sharedKey, _ := pre.(*curve25519.ProjPoint)
 	x, _ := sharedKey.GetXY()
@@ -957,4 +983,17 @@ func (d *DistKeyGenerator) PreSharedKey(privateKey kyber.Scalar, publicKey kyber
 		commitsBin,
 	)
 	return mod.NewInt(new(big.Int).SetBytes(hash.Bytes()), &d.curveParams.P), nil
+}
+
+func (d *DistKeyGenerator) estimateGas(ctx context.Context, fn string, args ...interface{}) (uint64, error) {
+	data, err := d.contractAbi.Pack(fn, args...)
+	if err != nil {
+		return 0, fmt.Errorf("pack args: %w", err)
+	}
+
+	return d.client.EstimateGas(ctx, ethereum.CallMsg{
+		From: d.ethereumAddress,
+		To: &d.contractAddress,
+		Data: data,
+	})
 }
