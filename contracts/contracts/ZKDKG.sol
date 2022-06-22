@@ -26,6 +26,7 @@ contract ZKDKG {
     }
 
     enum Phase {
+        UNINITIALIZED,
         REGISTER,
         BROADCAST_SUBMIT,
         BROADCAST_DISPUTE,
@@ -67,6 +68,10 @@ contract ZKDKG {
         shareVerifier = ShareVerifier(_shareVerifier);
         keyVerifier = KeyVerifier(_keyVerifier);
         noParticipants = _noParticipants;
+
+        // Avoid higher costs for the last participant that calls register
+        phase = Phase.REGISTER;
+        phaseEnd = type(uint64).max;
     }
 
     function register(uint publicKey) public payable {
@@ -260,7 +265,8 @@ contract ZKDKG {
 
         delete submitter;
         delete dispute;
-        delete phase;
+
+        phase = Phase.REGISTER;
 
         emit Reset();
     }
