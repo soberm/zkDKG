@@ -164,7 +164,10 @@ generate_config() {
 }
 
 collect_container_stats() {
-    local csv="$1"/${containerCsvFiles[containerIndex++]}.csv
+    local reports="$1"/reports
+    local csv="$reports"/${containerCsvFiles[containerIndex++]}.csv
+
+    mkdir -p "$reports"
     echo "time,memory_usage" > "$csv"
     perl -ne "print if s/^cName=$2(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
 }
