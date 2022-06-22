@@ -79,6 +79,8 @@ main() {
             generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
             goPids[0]=$!
         else
+            mkdir -p "$buildDir"/nodes
+
             for ((i = 1; i <= participants; i++)); do
                 flags=()
                 if (( i == 1 )); then # The 1st node emits invalid commitments
@@ -94,7 +96,7 @@ main() {
                     flags+=("--broadcast-only")
                 fi
 
-                generate_config $i $participants | go run ./cmd/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/node_$i.log &
+                generate_config $i $participants | go run ./cmd/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
                 goPids[$i]=$!
             done
         fi
