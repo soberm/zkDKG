@@ -24,6 +24,7 @@ import (
 	"go.dedis.ch/kyber/v3/group/mod"
 	"go.dedis.ch/kyber/v3/share"
 	"go.dedis.ch/kyber/v3/suites"
+	"golang.org/x/sync/errgroup"
 )
 
 type Participant struct {
@@ -141,40 +142,38 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	log.Info("Generating distributed private key...")
 
 	distributionEnd := make(chan struct{})
+	broadcastsCollected := make(chan struct{})
+	g, ctx := errgroup.WithContext(ctx)
 
 	if !d.broadcastOnly {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-
-		go func() {
-			if err := d.WatchBroadcastSharesLog(ctx, distributionEnd); err != nil {
-				log.Errorf("Watching broadcast shares log failed: %v", err)
-				cancel()
+		g.Go(func() error {
+			if err := d.WatchBroadcastSharesLog(ctx, distributionEnd, broadcastsCollected); err != nil {
+				return fmt.Errorf("watching broadcast shares log failed: %v", err)
 			}
-		}()
+			return nil
+		})
 
-		go func() {
+		g.Go(func() error {
 			if err := d.WatchDistributionEndLog(ctx); err != nil {
-				log.Errorf("Watching distribution end log failed: %v", err)
-				cancel()
-			} else {
-				close(distributionEnd)
+				return fmt.Errorf("watching distribution end log failed: %v", err)
 			}
-		}()
-	
-		go func() {
-			if err := d.WatchDisputeShareLog(ctx); err != nil {
-				log.Errorf("Watching dispute share log failed: %v", err)
-				cancel()
-			}
-		}()
+			close(distributionEnd)
+			return nil
+		})
 
-		go func() {
-			if err := d.WatchExclusion(ctx); err != nil {
-				log.Errorf("Watching exclusion failed: %v", err)
-				cancel()
+		g.Go(func() error {
+			if err := d.WatchDisputeShareLog(ctx); err != nil {
+				return fmt.Errorf("watching dispute share log failed: %v", err)
 			}
-		}()
+			return nil
+		})
+
+		g.Go(func() error {
+			if err := d.WatchExclusion(ctx); err != nil {
+				return fmt.Errorf("watching exclusion failed: %v", err)
+			}
+			return nil
+		})
 	}
 
 	if err := d.RegisterAndWait(ctx); err != nil {
@@ -198,17 +197,19 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		// Do nothing
 	case <-ctx.Done():
 		// The context is cancelled when an unexpected error has occurred in one of the goroutines
-		return nil, errors.New("unexpected error")
+		return nil, g.Wait()
 	}
 
 	disputeEnd := d.DisputeSharePeriodEnd()
+
+	<-broadcastsCollected
 
 	select {
 	case <-disputeEnd:
 		// Do nothing
 	case <-ctx.Done():
 		// The context is cancelled when an unexpected error has occurred in one of the goroutines
-		return nil, errors.New("unexpected error")
+		return nil, g.Wait()
 	}
 
 	if err := d.checkExpiredDisputes(); err != nil {
@@ -220,19 +221,29 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		return nil, fmt.Errorf("compute public key: %v", err)
 	}
 
-	log.Infof("%v", pub)
-
-	pkLog := make(chan struct{}, 1)
-	go func() {
+	pkLog := make(chan struct{})
+	g.Go(func() error {
 		if err := d.WatchPublicKeySubmissionLog(ctx, pub); err != nil {
-			log.Errorf("Watching public key submission log failed: %v", err)
+			return fmt.Errorf("watching public key submission log failed: %v", err)
 		}
-		pkLog <- struct{}{}
-	}()
+		close(pkLog)
+		return nil
+	})
 
 	if err := d.SubmitPublicKey(pub); err != nil {
+		if ctx.Err() != nil {
+			return nil, g.Wait()
+		}
+
 		log.Warnf("Public key submission failed, waiting for other participant's submission: %v", err)
-		<-pkLog
+
+		select {
+		case <-pkLog:
+			// Do nothing
+		case <-ctx.Done():
+			// The context is cancelled when an unexpected error has occurred in one of the goroutines
+			return nil, g.Wait()
+		}
 	}
 
 	return pub, nil
@@ -262,7 +273,7 @@ func (d *DistKeyGenerator) Register(ctx context.Context) error {
 		return fmt.Errorf("register: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	receipt, err := bind.WaitMined(ctx, d.client, tx)
 	if err != nil {
 		return fmt.Errorf("wait mined register: %w", err)
 	}
@@ -286,6 +297,7 @@ func (d *DistKeyGenerator) CollectParticipants() error {
 
 	log.Info("Collecting participants...")
 
+	// TODO Pass context to this and similar calls
 	pks, err := d.contract.PublicKeys(nil)
 	if err != nil {
 		return fmt.Errorf("collect public keys: %w", err)
@@ -339,7 +351,7 @@ func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
 }
 
 func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
-	end := make(chan struct{}, 1)
+	end := make(chan struct{})
 
 	go func() {
 		timer := time.NewTimer(d.durationUntilPhaseEnd())
@@ -353,7 +365,7 @@ func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
 			d.extendedPeriod = false
 			timer.Reset(d.durationUntilPhaseEnd())
 		}
-		end <- struct{}{}
+		close(end)
 	}()
 
 	return end
@@ -469,7 +481,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 	return nil
 }
 
-func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd chan struct{}) error {
+func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd, broadcastsCollected chan struct{}) error {
 	sink := make(chan *ZKDKGContractBroadcastSharesLog)
 	defer close(sink)
 
@@ -487,9 +499,10 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distribu
 	for {
 		select {
 		case event := <-sink:
-			if err := d.HandleBroadcastSharesLog(event, distributionEnd); err != nil {
+			if err := d.HandleBroadcastSharesLog(event, distributionEnd, broadcastsCollected); err != nil {
 				return fmt.Errorf("handle event: %v", err)
 			}
+		
 		case err = <-sub.Err():
 			return err
 		case <-ctx.Done():
@@ -498,7 +511,7 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distribu
 	}
 }
 
-func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd chan struct{}) error {
+func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd, broadcastsCollected chan struct{}) error {
 	if d.ethereumAddress == broadcastSharesLog.Sender {
 		// Ignore own broadcast
 		return nil
@@ -572,6 +585,10 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	d.shares[dealerIndex] = decryptedShare
 	d.commitments[dealerIndex] = commits
+
+	if len(d.shares) == len(d.participants) {
+		close(broadcastsCollected)
+	}
 
 	return nil
 }
@@ -769,6 +786,7 @@ func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
 
 func (d *DistKeyGenerator) HandleExclusion(index uint64) {
 	d.commitments[index][0] = d.suite.Point().Null()
+	d.shares[index] = d.suite.Scalar()
 }
 
 func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point) error {
