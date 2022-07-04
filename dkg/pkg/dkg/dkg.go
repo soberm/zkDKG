@@ -50,7 +50,6 @@ type DistKeyGenerator struct {
 	priPoly             *share.PriPoly
 	shares              map[uint64]kyber.Scalar
 	commitments         map[uint64][]kyber.Point
-	broadcastsCollected chan bool
 	rogue			    bool
 	ignoreInvalid	    bool
 	disputed			bool
@@ -128,7 +127,6 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		participants:        make(map[uint64]*Participant),
 		shares:              make(map[uint64]kyber.Scalar),
 		commitments:         make(map[uint64][]kyber.Point),
-		broadcastsCollected: make(chan bool, 1),
 		rogue:  			 rogue,
 		ignoreInvalid:		 ignoreInvalid,
 		disputed: 			 false,
@@ -381,8 +379,8 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 
 	test := poly.Eval(i)
 
-	if test.V.Equal(fig) {
-		log.Infof("Overall share is valid")
+	if !test.V.Equal(fig) {
+		return nil, errors.New("overall share is invalid")
 	}
 
 	return distKeyShare.Public(), nil
@@ -538,48 +536,55 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	fie := mod.NewInt(new(big.Int).SetBytes(shares[j - 1].Bytes()), &d.curveParams.P)
 
-	validCommits := true
+	valid := true
+
+	var decryptedShare kyber.Scalar
 	commits, err := BigToPoints(d.suite, commitments)
 	if err != nil {
-		validCommits = false
+		valid = false
 
-		log.Infof("Received invalid commits from dealer %d", dealerIndex)
+		log.Infof("Received invalid curve points from dealer %d", dealerIndex)
 		if !d.ignoreInvalid {
 			d.scheduleDispute(dealerIndex, shares, distributionEnd)
 		}
+	} else {
+		sharedKey, err := d.PreSharedKey(d.long, pubKeyDealer, commits)
+		if err != nil {
+			return fmt.Errorf("pre shared key: %w", err)
+		}
 
-		// FIXME Those are nil pointers
-		commits = make([]kyber.Point, len(commitments))
-	}
+		fi := &share.PriShare{
+			I: int(i) - 1,
+			V: d.suite.Scalar().Sub(fie, sharedKey),
+		}
 
-	sharedKey, err := d.PreSharedKey(d.long, pubKeyDealer, commits)
-	if err != nil {
-		return fmt.Errorf("pre shared key: %w", err)
-	}
-
-	fi := &share.PriShare{
-		I: int(i) - 1,
-		V: d.suite.Scalar().Sub(fie, sharedKey),
-	}
-
-	if validCommits {
 		pubPoly := share.NewPubPoly(d.suite, nil, commits)
 
 		if pubPoly.Check(fi) {
-			log.Infof("Received valid broadcast from dealer %v", dealerIndex)
+			decryptedShare = fi.V
 		} else {
+			log.Infof("Received invalid share from dealer %d", dealerIndex)
+			valid = false
+
 			if !d.ignoreInvalid {
 				d.scheduleDispute(dealerIndex, shares, distributionEnd)
 			}
 		}
 	}
 
-	d.shares[dealerIndex] = fi.V
-	d.commitments[dealerIndex] = commits
+	if valid {
+		log.Infof("Received valid broadcast from dealer %d", dealerIndex)
+	} else {
+		decryptedShare = d.suite.Scalar()
 
-	if len(d.shares) == len(d.participants) {
-		d.broadcastsCollected <- true
+		commits = make([]kyber.Point, len(commitments))
+		for i := range commits {
+			commits[i] = d.suite.Point()
+		}
 	}
+
+	d.shares[dealerIndex] = decryptedShare
+	d.commitments[dealerIndex] = commits
 
 	return nil
 }

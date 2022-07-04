@@ -252,7 +252,7 @@ type ProjectiveCurve struct {
 func (c *ProjectiveCurve) Point() kyber.Point {
 	P := new(ProjPoint)
 	P.c = c
-	//P.Set(&c.null)
+	P.Set(&c.null)
 	return P
 }
 
