@@ -6,15 +6,28 @@ import "./KeyVerifier.sol";
 
 // TODO Implement staking
 contract ZKDKG {
-    uint16 public constant KEY_DISPUTE_PERIOD = 30 seconds;
-    uint16 public constant SHARES_BROADCAST_PERIOD = 10 seconds;
-    uint16 public constant SHARES_DISPUTE_PERIOD = 10 seconds;
-    uint16 public constant SHARES_DEFENSE_PERIOD = 2 minutes;
-
     uint public constant STAKE = 0 ether;
+
+    uint public immutable noParticipants;
+    uint16 public immutable periodLength;
+
+    Phase public phase;
+    uint64 public phaseEnd;
+
+    mapping(address => Participant) public participants;
+    address[] public addresses;
+
+    mapping(address => bytes32) public commitmentHashes;
+    mapping(address => bytes32) public shareHashes;
+    uint256[] public firstCoefficients;
 
     // Compressed encoding of the point at infinity (0, 1)
     uint private constant INFINITY = 1;
+
+    ShareVerifier private shareVerifier;
+    KeyVerifier private keyVerifier;
+
+    mapping(address => Dispute) private disputes;
 
     struct Participant {
         uint64 index;
@@ -36,23 +49,6 @@ contract ZKDKG {
         BROADCAST_DEFEND,
         PK_DISPUTE
     }
-    Phase public phase;
-
-    mapping(address => Participant) public participants;
-    address[] public addresses;
-
-    mapping(address => bytes32) public commitmentHashes;
-    mapping(address => bytes32) public shareHashes;
-    uint256[] public firstCoefficients;
-
-    uint256 public noParticipants;
-
-    ShareVerifier private shareVerifier;
-    KeyVerifier private keyVerifier;
-
-    mapping(address => Dispute) private disputes;
-
-    uint64 public phaseEnd;
 
     event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex);
     event BroadcastSharesLog(address sender, uint64 broadcasterIndex);
@@ -65,11 +61,13 @@ contract ZKDKG {
     constructor(
         address _shareVerifier,
         address _keyVerifier,
-        uint256 _noParticipants
+        uint256 _noParticipants,
+        uint16 _periodLength
     ) {
         shareVerifier = ShareVerifier(_shareVerifier);
         keyVerifier = KeyVerifier(_keyVerifier);
         noParticipants = _noParticipants;
+        periodLength = _periodLength;
 
         // Avoid higher costs for the last participant that calls register
         phase = Phase.REGISTER;
@@ -93,7 +91,7 @@ contract ZKDKG {
         participants[msg.sender] = Participant(uint64(addresses.length), publicKey);
 
         if (addresses.length == noParticipants) {
-            phaseEnd = uint64(block.timestamp) + SHARES_BROADCAST_PERIOD;
+            phaseEnd = uint64(block.timestamp) + periodLength;
             phase = Phase.BROADCAST_SUBMIT;
 
             emit RegistrationEndLog();
@@ -122,7 +120,7 @@ contract ZKDKG {
         emit BroadcastSharesLog(msg.sender, participants[msg.sender].index);
 
         if (firstCoefficients.length == noParticipants) {
-            phaseEnd = uint64(block.timestamp) + SHARES_DISPUTE_PERIOD;
+            phaseEnd = uint64(block.timestamp) + periodLength;
             phase = Phase.BROADCAST_DISPUTE;
 
             emit DistributionEndLog();
@@ -152,7 +150,7 @@ contract ZKDKG {
         shareIndex--; // Participant indices are one-based
 
         phase = Phase.BROADCAST_DEFEND;
-        phaseEnd = uint64(block.timestamp) + SHARES_DEFENSE_PERIOD;
+        phaseEnd = uint64(block.timestamp) + periodLength;
 
         disputes[disputeeAddr] = Dispute(
             disputerIndex,
