@@ -75,7 +75,6 @@ contract ZKDKG {
     }
 
     function register(uint publicKey) public payable {
-
         require(msg.value == STAKE, "value too low");
 
         if (phase == Phase.REGISTER) {
@@ -98,20 +97,12 @@ contract ZKDKG {
         }
     }
 
-    // FIXME One account can call this multiple times
     function broadcastShares(uint256[] memory commitments, uint256[] memory shares) external registered {
         require(phase == Phase.BROADCAST_SUBMIT, "broadcast period has not started yet");
         require(block.timestamp <= phaseEnd, "broadcast period has expired");
-
-        require(
-            shares.length == addresses.length - 1,
-            "invalid number of shares"
-        );
-
-        require(
-            commitments.length == threshold(),
-            "invalid number of commitments"
-        );
+        require(commitmentHashes[msg.sender] == 0, "already broadcasted before");
+        require(shares.length == addresses.length - 1, "invalid number of shares");
+        require(commitments.length == threshold(), "invalid number of commitments");
 
         firstCoefficients.push(commitments[0]);
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
@@ -132,10 +123,7 @@ contract ZKDKG {
         
         require(!isDisputed(disputes[disputeeAddr]), "ongoing dispute");
         require(phase == Phase.BROADCAST_DISPUTE && block.timestamp <= phaseEnd, "not in dispute period");
-        require(
-            shareHashes[disputeeAddr] == keccak256(abi.encodePacked(shares)),
-            "invalid shares"
-        );
+        require(shareHashes[disputeeAddr] == keccak256(abi.encodePacked(shares)), "invalid shares");
 
         uint64 disputerIndex = participants[msg.sender].index;
 
