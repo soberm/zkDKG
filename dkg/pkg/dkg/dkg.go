@@ -443,8 +443,9 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 
 	args = append(args, hash...)
 
-	pubProj, _ := pub.(*curve25519.ProjPoint)
-	pubXY := [2]*big.Int{&pubProj.X.V, &pubProj.Y.V}
+	// This is actually necessary instead of simply accessing via the X and Y properties due to the normalization that takes place in GetXY
+	pubX, pubY := pub.(*curve25519.ProjPoint).GetXY()
+	pubXY := [2]*big.Int{&pubX.V, &pubY.V}
 
 	log.Infof("Args: %d", args)
 
