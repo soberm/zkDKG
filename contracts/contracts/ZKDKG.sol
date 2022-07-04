@@ -45,9 +45,7 @@ contract ZKDKG {
         UNINITIALIZED,
         REGISTER,
         BROADCAST_SUBMIT,
-        BROADCAST_DISPUTE,
-        BROADCAST_DEFEND,
-        PK_DISPUTE
+        BROADCAST_DISPUTE
     }
 
     event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex);
@@ -79,7 +77,7 @@ contract ZKDKG {
 
         if (phase == Phase.REGISTER) {
             require(!isRegistered(msg.sender), "already registered");
-        } else if (phase == Phase.PK_DISPUTE) {
+        } else if (phase == Phase.BROADCAST_DISPUTE) {
             require(block.timestamp > phaseEnd, "dispute period still ongoing");
             reset();
         } else {
@@ -121,8 +119,8 @@ contract ZKDKG {
     function disputeShare(uint64 disputeeIndex, uint256[] calldata shares) external registered {
         address disputeeAddr = addresses[disputeeIndex - 1];
         
-        require(!isDisputed(disputes[disputeeAddr]), "ongoing dispute");
         require(phase == Phase.BROADCAST_DISPUTE && block.timestamp <= phaseEnd, "not in dispute period");
+        require(!isDisputed(disputes[disputeeAddr]), "disputee already disputed");
         require(shareHashes[disputeeAddr] == keccak256(abi.encodePacked(shares)), "invalid shares");
 
         uint64 disputerIndex = participants[msg.sender].index;
@@ -137,7 +135,6 @@ contract ZKDKG {
         }
         shareIndex--; // Participant indices are one-based
 
-        phase = Phase.BROADCAST_DEFEND;
         phaseEnd = uint64(block.timestamp) + periodLength;
 
         disputes[disputeeAddr] = Dispute(
@@ -179,6 +176,7 @@ contract ZKDKG {
 
         require(shareVerifier.verifyTx(proof, input), "invalid proof");
 
+        delete disputes[msg.sender];
         excludeNode(dispute.disputerIndex);
     }
 
@@ -253,7 +251,6 @@ contract ZKDKG {
 
         firstCoefficients[disputerIndex - 1] = INFINITY;
         delete participants[addr];
-        delete disputes[addr];
 
         emit Exclusion(disputerIndex);
     }
