@@ -220,16 +220,19 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		return nil, fmt.Errorf("compute public key: %v", err)
 	}
 
-	log.Infof("Public key: %v", pub)
-	// TODO Don't automatically let the first node submit the PK
-	if d.index == 1 {
-		if err := d.SubmitPublicKey(pub); err != nil {
-			return nil, fmt.Errorf("submit public key: %v", err)
-		}		
-	} else {
-		if err := d.WatchPublicKeySubmissionLog(ctx); err != nil {
-			return nil, fmt.Errorf("watch public key submission log: %v", err)
+	log.Infof("%v", pub)
+
+	pkLog := make(chan struct{}, 1)
+	go func() {
+		if err := d.WatchPublicKeySubmissionLog(ctx, pub); err != nil {
+			log.Errorf("Watching public key submission log failed: %v", err)
 		}
+		pkLog <- struct{}{}
+	}()
+
+	if err := d.SubmitPublicKey(pub); err != nil {
+		log.Warnf("Public key submission failed, waiting for other participant's submission: %v", err)
+		<-pkLog
 	}
 
 	return pub, nil
@@ -336,7 +339,7 @@ func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
 }
 
 func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
-	end := make(chan struct{})
+	end := make(chan struct{}, 1)
 
 	go func() {
 		timer := time.NewTimer(d.durationUntilPhaseEnd())
@@ -501,32 +504,16 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		return nil
 	}
 
-	tx, _, err := d.client.TransactionByHash(context.Background(), broadcastSharesLog.Raw.TxHash)
+	inputs, err := d.getTxInputs(broadcastSharesLog.Raw.TxHash)
 	if err != nil {
-		return fmt.Errorf("transaction by hash: %w", err)
+		return fmt.Errorf("get tx inputs: %v", err)
 	}
-
-	txData := tx.Data()
-	a, err := abi.JSON(strings.NewReader(ZKDKGContractABI))
-	if err != nil {
-		return fmt.Errorf("abi from json: %w", err)
-	}
-
-	method, err := a.MethodById(txData[:4])
-	if err != nil {
-		return fmt.Errorf("method by id: %w", err)
-	}
-
-	inputs, err := method.Inputs.Unpack(txData[4:])
-	if err != nil {
-		return fmt.Errorf("unpack inputs: %w", err)
-	}
-
-	dealerIndex := broadcastSharesLog.BroadcasterIndex
-	pubKeyDealer := d.participants[dealerIndex].pub
 
 	commitments := inputs[0].([]*big.Int)
 	shares := inputs[1].([]*big.Int)
+
+	dealerIndex := broadcastSharesLog.BroadcasterIndex
+	pubKeyDealer := d.participants[dealerIndex].pub
 
 	i := d.index
 	j := i
@@ -784,7 +771,7 @@ func (d *DistKeyGenerator) HandleExclusion(index uint64) {
 	d.commitments[index][0] = d.suite.Point().Null()
 }
 
-func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context) error {
+func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point) error {
 	sink := make(chan *ZKDKGContractPublicKeySubmission)
 	defer close(sink)
 
@@ -801,14 +788,33 @@ func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context) erro
 
 	for {
 		select {
-		case <-sink:
-			return nil
+		case event := <-sink:
+			return d.HandlePublicKeySubmissionLog(ctx, computedPk, event)
 		case err = <-sub.Err():
 			return err
 		case <-ctx.Done():
 			return nil
 		}
 	}
+}
+
+func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point, event *ZKDKGContractPublicKeySubmission) error {
+	inputs, err := d.getTxInputs(event.Raw.TxHash)
+	if err != nil {
+		return fmt.Errorf("get tx inputs: %v", err)
+	}
+
+	submittedPkBig := inputs[0].([2]*big.Int)
+	submittedPk := d.suite.Point().(*curve25519.ProjPoint)
+	submittedPkX, submittedPkY := submittedPk.GetXY()
+	submittedPkX.V.Set(submittedPkBig[0])
+	submittedPkY.V.Set(submittedPkBig[1])
+
+	if !computedPk.Equal(submittedPk) {
+		return errors.New("computed public key differs from submitted public key")
+	}
+	
+	return nil
 }
 
 func (d *DistKeyGenerator) DisputeShare(disputeeIndex uint64, shares []*big.Int) error {
@@ -994,4 +1000,29 @@ func (d *DistKeyGenerator) scheduleDispute(dealerIndex uint64, shares []*big.Int
 			log.Errorf("Dispute commits: %v", err)
 		}
 	}()
+}
+
+func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error) {
+	tx, _, err := d.client.TransactionByHash(context.Background(), txHash)
+	if err != nil {
+		return nil, fmt.Errorf("transaction by hash: %w", err)
+	}
+
+	txData := tx.Data()
+	a, err := abi.JSON(strings.NewReader(ZKDKGContractABI))
+	if err != nil {
+		return nil, fmt.Errorf("abi from json: %w", err)
+	}
+
+	method, err := a.MethodById(txData[:4])
+	if err != nil {
+		return nil, fmt.Errorf("method by id: %w", err)
+	}
+
+	inputs, err := method.Inputs.Unpack(txData[4:])
+	if err != nil {
+		return nil, fmt.Errorf("unpack inputs: %w", err)
+	}
+
+	return inputs, nil
 }
