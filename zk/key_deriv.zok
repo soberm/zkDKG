@@ -1,3 +1,4 @@
+import "./ecc/compressPoints" as compressPoints
 import "./utils/casts/commits_to_u64" as commits_to_u64
 import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
 
@@ -7,14 +8,14 @@ import "hashes/keccak/256bit" as keccak256
 
 // const u32 PARTICIPANTS = (To be filled in by the build script)
 const u32 N = PARTICIPANTS
-const u32 N_TIMES_8 = N * 8
+const u32 N_TIMES_4 = N * 4
 
-def main(private field[N][2] firstCoefficients, field[2] expected, field[2] hash) -> bool:
-    assert(hash == u64_array_to_field_array::<_,2>(keccak256(commits_to_u64::<_,N_TIMES_8>(firstCoefficients))))
+def main(private field[N][2] firstCoefficients, field[2] hash) -> field[2]:
+    assert(hash == u64_array_to_field_array::<_,2>(keccak256(compressPoints::<_,N_TIMES_4>(firstCoefficients))))
 
     field[2] key  = BABYJUBJUB_PARAMS.INFINITY
     for u32 i in 0..N do
         key = edwardsAdd(key, firstCoefficients[i], BABYJUBJUB_PARAMS)
     endfor
 
-    return key[0] != expected[0] || key[1] != expected[1]
+    return key

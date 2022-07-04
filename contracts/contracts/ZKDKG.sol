@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "./ShareVerifier.sol";
 import "./KeyVerifier.sol";
-import "./ShareInputVerifier.sol";
 
 // TODO Implement staking
 contract ZKDKG {
@@ -14,6 +13,9 @@ contract ZKDKG {
 
     uint public constant STAKE = 0 ether;
 
+    // Compressed encoding of the point at infinity (0, 1)
+    uint private constant INFINITY = 1;
+
     struct Participant {
         uint64 index;
         uint publicKey;
@@ -22,6 +24,7 @@ contract ZKDKG {
     struct Dispute {
         uint64 disputerIndex;
         uint64 disputeeIndex;
+        uint64 end;
         uint share;
     }
 
@@ -42,16 +45,14 @@ contract ZKDKG {
     mapping(address => bytes32) public shareHashes;
     uint256[] public firstCoefficients;
 
-    address submitter;
-    uint256 public masterPublicKey;
     uint256 public noParticipants;
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
 
-    Dispute private dispute;
+    mapping(address => Dispute) private disputes;
 
-    uint64 private phaseEnd;
+    uint64 public phaseEnd;
 
     event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex);
     event BroadcastSharesLog(address sender, uint64 broadcasterIndex);
@@ -59,6 +60,7 @@ contract ZKDKG {
     event DistributionEndLog();
     event PublicKeySubmission();
     event Reset();
+    event Exclusion(uint64 index);
 
     constructor(
         address _shareVerifier,
@@ -128,16 +130,20 @@ contract ZKDKG {
     }
 
     function disputeShare(uint64 disputeeIndex, uint256[] calldata shares) external registered {
-        require(dispute.disputeeIndex == 0, "ongoing dispute");
+        address disputeeAddr = addresses[disputeeIndex - 1];
+        
+        require(!isDisputed(disputes[disputeeAddr]), "ongoing dispute");
         require(phase == Phase.BROADCAST_DISPUTE && block.timestamp <= phaseEnd, "not in dispute period");
         require(
-            shareHashes[addresses[disputeeIndex - 1]] == keccak256(abi.encodePacked(shares)),
+            shareHashes[disputeeAddr] == keccak256(abi.encodePacked(shares)),
             "invalid shares"
         );
 
+        uint64 disputerIndex = participants[msg.sender].index;
+
         // TODO Check that disputer public key is valid
 
-        uint256 shareIndex = participants[msg.sender].index;
+        uint256 shareIndex = disputerIndex;
 
         // The shares of each dealer don't include a share for themselves, so there's a "closed gap" in each shares array
         if (shareIndex > disputeeIndex) {
@@ -145,21 +151,24 @@ contract ZKDKG {
         }
         shareIndex--; // Participant indices are one-based
 
-        dispute = Dispute(
-            participants[msg.sender].index,
-            disputeeIndex,
-            shares[shareIndex]
-        );
-
         phase = Phase.BROADCAST_DEFEND;
         phaseEnd = uint64(block.timestamp) + SHARES_DEFENSE_PERIOD;
+
+        disputes[disputeeAddr] = Dispute(
+            disputerIndex,
+            disputeeIndex,
+            phaseEnd,
+            shares[shareIndex]
+        );
         
-        emit DisputeShare(participants[msg.sender].index, disputeeIndex);
+        emit DisputeShare(disputerIndex, disputeeIndex);
     }
 
     function defendShare(ShareVerifier.Proof calldata proof) external registered {
-        require(participants[msg.sender].index == dispute.disputeeIndex, "not being disputed");
-        require(block.timestamp <= phaseEnd, "defense period expired");
+        Dispute memory dispute = disputes[msg.sender];
+
+        require(isDisputed(disputes[msg.sender]), "not being disputed");
+        require(block.timestamp <= dispute.end, "defense period expired");
 
         address disputee = addresses[dispute.disputeeIndex - 1];
         address disputer = addresses[dispute.disputerIndex - 1];
@@ -184,46 +193,29 @@ contract ZKDKG {
 
         require(shareVerifier.verifyTx(proof, input), "invalid proof");
 
-        payNodes();
+        excludeNode(dispute.disputerIndex);
     }
 
-    function submitPublicKey(uint256 _publicKey) external registered {
-        require(phase == Phase.BROADCAST_DISPUTE, "not in submission phase");
+    function submitPublicKey(uint[2] calldata _publicKey, KeyVerifier.Proof calldata proof) external registered {
+        require(phase >= Phase.BROADCAST_DISPUTE, "not in submission phase");
         require(block.timestamp > phaseEnd, "dispute period still ongoing");
 
-        submitter = msg.sender;
-        masterPublicKey = _publicKey;
-        phaseEnd = uint64(block.timestamp) + KEY_DISPUTE_PERIOD;
-        phase = Phase.PK_DISPUTE;
+        checkExpiredDisputes();
 
-        emit PublicKeySubmission();
-    }
-
-    // TODO Let disputee compute proof
-    function disputePublicKey(KeyVerifier.Proof memory proof) external registered {
-        require(phase == Phase.PK_DISPUTE, "not in dispute phase");
-        require(block.timestamp <= phaseEnd, "dispute period has expired");
-
-        uint256[2] memory hash = hashToUint128(
+        uint[2] memory hash = hashToUint128(
             keccak256(abi.encodePacked(firstCoefficients))
         );
 
-        // FIXME wrong parameters
-        uint256[5] memory input = [
-            masterPublicKey,
-            masterPublicKey,
+        uint[4] memory input = [
             hash[0],
             hash[1],
-            1
+            _publicKey[0],
+            _publicKey[1]
         ];
-        require(keyVerifier.verifyTx(proof, input), "invalid proof");
-        
-        payNodes();
-    }
 
-    function claim() public {
-        require(dispute.disputeeIndex != 0, "no dispute running");
-        require(block.timestamp > phaseEnd, "disputee can stil defend");
+        require(keyVerifier.verifyTx(proof, input), "invalid proof");
+
+        emit PublicKeySubmission();
 
         payNodes();
     }
@@ -257,24 +249,60 @@ contract ZKDKG {
             delete participants[addr];
             delete shareHashes[addr];
             delete commitmentHashes[addr];
+            delete disputes[addr];
         }
 
         delete addresses;
         delete firstCoefficients;
-        delete masterPublicKey;
-
-        delete submitter;
-        delete dispute;
 
         phase = Phase.REGISTER;
 
         emit Reset();
     }
 
+    function excludeNode(uint64 disputerIndex) internal {
+        // Share and commitment hashes are not used after a dispute, no need to delete them here
+
+        address addr = addresses[disputerIndex - 1];
+
+        firstCoefficients[disputerIndex - 1] = INFINITY;
+        delete participants[addr];
+        delete disputes[addr];
+
+        emit Exclusion(disputerIndex);
+    }
+
+    function expiredDisputes(uint timestamp) public view returns (bool[] memory) {
+        bool[] memory indices = new bool[](addresses.length);
+        for (uint64 i = 0; i < indices.length; i++) {
+            address addr = addresses[i];
+            Dispute memory dispute = disputes[addr];
+
+            if (isDisputed(dispute) && dispute.end <= timestamp) {
+                indices[i] = true;
+            }
+        }
+        return indices;
+    }
+
+    function checkExpiredDisputes() internal {
+        bool[] memory indices = expiredDisputes(block.timestamp);
+
+        for (uint64 i = 0; i < indices.length; i++) {
+            if (indices[i]) {
+                excludeNode(i + 1);
+            }
+        }
+    }
+
     function isRegistered(address _addr) public view returns (bool) {
         if (addresses.length == 0) return false;
         uint index = participants[_addr].index;
         return index != 0 && addresses[index - 1] == _addr;
+    }
+
+    function isDisputed(Dispute memory dispute) internal pure returns (bool) {
+        return dispute.disputeeIndex != 0;
     }
 
     function publicKeys() external view returns (uint[] memory) {

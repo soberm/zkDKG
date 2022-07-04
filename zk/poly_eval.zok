@@ -1,3 +1,4 @@
+import "./ecc/compressPoints" as compressPoints
 import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
 import "./utils/casts/field_to_u64_array" as field_to_u64_array
@@ -17,7 +18,7 @@ import "utils/pack/bool/unpack256" as unpack256
 
 // const u32 PARTICIPANTS = (To be filled in by the build script)
 const u32 N = (PARTICIPANTS + 1) / 2
-const u32 N_TIMES_8 = N * 8
+const u32 N_TIMES_4 = N * 4
 
 def compressPoint(field[2] point) -> u64[4]:
     u64[4] result = [0; 4]
@@ -52,15 +53,7 @@ def evalPubPoly(field index, field[N][2] commits) -> field[2]:
 def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDisputer, private field index, private field encryptedShare, field[2] hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
-    u64[N * 4] compressed = [0; N * 4]
-    for u32 i in 0..N do
-        bool[256] commit = edwardsCompress(commits[i])
-        for u32 j in 0..4 do
-            compressed[i * 4 + j] = u64_from_bits(commit[(64 * j)..(64 * (j + 1))])
-        endfor
-    endfor
-
-    u64[4] commitsHash = keccak256(compressed)
+    u64[4] commitsHash = keccak256(compressPoints::<_,N_TIMES_4>(commits))
 
     assert(hash == u64_array_to_field_array::<_,2>(keccak256([
         ...commitsHash,

@@ -43,6 +43,7 @@ type DistKeyGenerator struct {
 	ethereumAddress  	common.Address
 	ethereumPrivateKey	*ecdsa.PrivateKey
 	long                kyber.Scalar
+	extendedPeriod		bool
 	pub                 kyber.Point
 	participants        map[uint64]*Participant
 	index               uint64
@@ -56,7 +57,7 @@ type DistKeyGenerator struct {
 	broadcastOnly		bool
 }
 
-const bufferTimeInSecs uint16 = 2
+const bufferTimeInSecs uint64 = 2
 
 func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInvalid, broadcastOnly bool) (*DistKeyGenerator, error) {
 
@@ -141,8 +142,7 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 
 	log.Info("Generating distributed private key...")
 
-	distributionEnd := make(chan bool, 1)
-	defer close(distributionEnd)
+	distributionEnd := make(chan struct{})
 
 	if !d.broadcastOnly {
 		var cancel context.CancelFunc
@@ -151,15 +151,31 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		go func() {
 			if err := d.WatchBroadcastSharesLog(ctx, distributionEnd); err != nil {
 				log.Errorf("Watching broadcast shares log failed: %v", err)
+				cancel()
 			}
-			cancel()
+		}()
+
+		go func() {
+			if err := d.WatchDistributionEndLog(ctx); err != nil {
+				log.Errorf("Watching distribution end log failed: %v", err)
+				cancel()
+			} else {
+				close(distributionEnd)
+			}
 		}()
 	
 		go func() {
 			if err := d.WatchDisputeShareLog(ctx); err != nil {
 				log.Errorf("Watching dispute share log failed: %v", err)
+				cancel()
 			}
-			cancel()
+		}()
+
+		go func() {
+			if err := d.WatchExclusion(ctx); err != nil {
+				log.Errorf("Watching exclusion failed: %v", err)
+				cancel()
+			}
 		}()
 	}
 
@@ -171,22 +187,34 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		return nil, fmt.Errorf("collect participants: %w", err)
 	}
 
-	if err := d.BroadcastAndWait(ctx, distributionEnd); err != nil {
-		return nil, fmt.Errorf("broadcast and wait: %v", err)
+	if err := d.DistributeShares(); err != nil {
+		return nil, fmt.Errorf("distribute shares: %w", err)
 	}
 
 	if d.broadcastOnly {
 		return nil, nil
 	}
 
-	disputeEnd := d.DisputeSharePeriodEnd().C
-
 	select {
-	case <-d.broadcastsCollected:
+	case <-distributionEnd:
 		// Do nothing
 	case <-ctx.Done():
-		// The context is cancelled when a broadcast is invalid or disputed or on any other error
-		return nil, errors.New("can't collect valid undisputed share for every participant")
+		// The context is cancelled when an unexpected error has occurred in one of the goroutines
+		return nil, errors.New("unexpected error")
+	}
+
+	disputeEnd := d.DisputeSharePeriodEnd()
+
+	select {
+	case <-disputeEnd:
+		// Do nothing
+	case <-ctx.Done():
+		// The context is cancelled when an unexpected error has occurred in one of the goroutines
+		return nil, errors.New("unexpected error")
+	}
+
+	if err := d.checkExpiredDisputes(); err != nil {
+		return nil, fmt.Errorf("check expired disputes: %v", err)
 	}
 
 	pub, err := d.ComputePublicKey()
@@ -194,34 +222,14 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 		return nil, fmt.Errorf("compute public key: %v", err)
 	}
 
-	pubInt, err := PointToBig(pub)
-	if err != nil {
-		return nil, fmt.Errorf("point to big: %w", err)
-	}
-
+	log.Infof("Public key: %v", pub)
 	// TODO Don't automatically let the first node submit the PK
 	if d.index == 1 {
-		select {
-		case <-disputeEnd:
-			if d.disputed {
-				<-ctx.Done() // Wait for proof to be generated and submitted
-				return nil, errors.New("own broadcast got disputed")
-			}
-		case <-ctx.Done():
-			var whichBroadcast string
-			if d.disputed {
-				whichBroadcast = "own"
-			} else {
-				whichBroadcast = "a"
-			}
-			return nil, fmt.Errorf("%s broadcast got disputed", whichBroadcast)
-		}
-
-		if err := d.SubmitPublicKey(pubInt); err != nil {
+		if err := d.SubmitPublicKey(pub); err != nil {
 			return nil, fmt.Errorf("submit public key: %v", err)
 		}		
 	} else {
-		if err := d.WatchPublicKeySubmissionLog(ctx, pubInt); err != nil {
+		if err := d.WatchPublicKeySubmissionLog(ctx); err != nil {
 			return nil, fmt.Errorf("watch public key submission log: %v", err)
 		}
 	}
@@ -329,54 +337,35 @@ func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
 	}
 }
 
-func (d *DistKeyGenerator) BroadcastAndWait(ctx context.Context, distributionEnd chan<- bool) error {
-	distributionEndLogs := make(chan *ZKDKGContractDistributionEndLog)
-	defer close(distributionEndLogs)
+func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
+	end := make(chan struct{})
 
-	sub, err := d.contract.WatchDistributionEndLog(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		distributionEndLogs,
-	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
+	go func() {
+		timer := time.NewTimer(d.durationUntilPhaseEnd())
 
-	if err := d.DistributeShares(); err != nil {
-		return fmt.Errorf("distribute shares: %w", err)
-	}
+		for {
+			<-timer.C
+			if !d.extendedPeriod {
+				break
+			}
 
-	if d.broadcastOnly {
-		return nil
-	}
-
-	log.Info("Waiting until distribution is finished...")
-
-	for {
-		select {
-		case <-distributionEndLogs:
-			log.Info("Received distribution end log")
-			distributionEnd <- true
-			return nil
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
+			d.extendedPeriod = false
+			timer.Reset(d.durationUntilPhaseEnd())
 		}
-	}
+		end <- struct{}{}
+	}()
+
+	return end
 }
 
-func (d *DistKeyGenerator) DisputeSharePeriodEnd() *time.Timer {
-	var duration time.Duration
-	if period, err := d.contract.SHARESDISPUTEPERIOD(nil); err == nil {
-		duration, _ = time.ParseDuration(fmt.Sprintf("%ds", period + bufferTimeInSecs))
+func (d *DistKeyGenerator) durationUntilPhaseEnd() time.Duration {
+	if period, err := d.contract.PhaseEnd(nil); err != nil {
+		log.Warnf("Failed to retrieve current phase end, using fallback value: %w", err)
+		duration, _ := time.ParseDuration("5m")
+		return duration
 	} else {
-		log.Warnf("Failed to retrieve share dispute period, using fallback value: %w", err)
-		duration, _ = time.ParseDuration("5m")
+		return time.Until(time.Unix(int64(period + bufferTimeInSecs), 0))
 	}
-	return time.NewTimer(duration)
 }
 
 func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
@@ -399,21 +388,76 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 	return distKeyShare.Public(), nil
 }
 
-func (d *DistKeyGenerator) SubmitPublicKey(pub *big.Int) error {
+func (d *DistKeyGenerator) checkExpiredDisputes() error {
+	indices, err := d.contract.ExpiredDisputes(nil, big.NewInt(time.Now().Unix()))
+	if err != nil {
+		return fmt.Errorf("contract call: %v", err)
+	}
+
+	for i, expired := range indices {
+		if expired {
+			d.HandleExclusion(uint64(i + 1))
+		}
+	}
+
+	return nil
+}
+
+func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
+	args := make([]*big.Int, 0)
+
+	firstCoefficients := make([]byte, 0)
+	for i := uint64(1); i <= uint64(len(d.participants)); i++ {
+		firstCoefficient := d.commitments[i][0]
+
+		coeffProj, _ := firstCoefficient.(*curve25519.ProjPoint)
+		coeffX, coeffY := coeffProj.GetXY()
+
+		coeffBin, err := firstCoefficient.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal coefficient: %v", err)
+		}
+		firstCoefficients = append(firstCoefficients, coeffBin...)
+
+		args = append(args, &coeffX.V, &coeffY.V)
+	}
+
+	rawHash := crypto.Keccak256(firstCoefficients)
+	hash := []*big.Int{
+		new(big.Int).SetBytes(rawHash[:16]),
+		new(big.Int).SetBytes(rawHash[16:]),
+	}
+
+	args = append(args, hash...)
+
+	pubProj, _ := pub.(*curve25519.ProjPoint)
+	pubXY := [2]*big.Int{&pubProj.X.V, &pubProj.Y.V}
+
+	log.Infof("Args: %d", args)
+
+	if err := d.polyProver.ComputeWitness(context.Background(), KeyDerivProof, args); err != nil {
+		return fmt.Errorf("compute witness for public key proof: %w", err)
+	}
+
+	proof, err := d.polyProver.GenerateProof(context.Background(), KeyDerivProof)
+	if err != nil {
+		return fmt.Errorf("generate proof for public key: %w", err)
+	}
+
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 	if err != nil {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
 	}
 	opts.GasPrice = big.NewInt(1000000000)
 
-	tx, err := d.contract.SubmitPublicKey(opts, pub)
+	submitTx, err := d.contract.SubmitPublicKey(opts, pubXY, KeyVerifierProof(*proof.Proof))
 	if err != nil {
 		return fmt.Errorf("submit public key: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	receipt, err := bind.WaitMined(context.Background(), d.client, submitTx)
 	if err != nil {
-		return fmt.Errorf("wait mined submit public key: %w", err)
+		return fmt.Errorf("wait mined submit: %w", err)
 	}
 
 	if receipt.Status == types.ReceiptStatusFailed {
@@ -424,7 +468,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub *big.Int) error {
 	return nil
 }
 
-func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd <-chan bool) error {
+func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd chan struct{}) error {
 	sink := make(chan *ZKDKGContractBroadcastSharesLog)
 	defer close(sink)
 
@@ -448,14 +492,14 @@ func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distribu
 		case err = <-sub.Err():
 			return err
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		}
 	}
 }
 
-func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd <-chan bool) error {
+func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd chan struct{}) error {
 	if d.ethereumAddress == broadcastSharesLog.Sender {
-		log.Infof("Ignored own broadcast")
+		// Ignore own broadcast
 		return nil
 	}
 
@@ -486,29 +530,6 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	commitments := inputs[0].([]*big.Int)
 	shares := inputs[1].([]*big.Int)
 
-	commits, err := BigToPoints(d.suite, commitments)
-	if err != nil {
-		err := fmt.Errorf("received invalid commits from dealer %d", dealerIndex)
-
-		if d.ignoreInvalid {
-			return err
-		}
-
-		log.Info("Starting dispute after distribution end")
-
-		go func() {
-			<-distributionEnd
-
-			log.Infoln("Disputing invalid commits")
-
-			if err := d.DisputeShare(dealerIndex, shares); err != nil {
-				log.Errorf("Dispute commits: %v", err)
-			}
-		}()
-
-		return nil
-	}
-
 	i := d.index
 	j := i
 	if i > dealerIndex {
@@ -516,6 +537,20 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	}
 
 	fie := mod.NewInt(new(big.Int).SetBytes(shares[j - 1].Bytes()), &d.curveParams.P)
+
+	validCommits := true
+	commits, err := BigToPoints(d.suite, commitments)
+	if err != nil {
+		validCommits = false
+
+		log.Infof("Received invalid commits from dealer %d", dealerIndex)
+		if !d.ignoreInvalid {
+			d.scheduleDispute(dealerIndex, shares, distributionEnd)
+		}
+
+		// FIXME Those are nil pointers
+		commits = make([]kyber.Point, len(commitments))
+	}
 
 	sharedKey, err := d.PreSharedKey(d.long, pubKeyDealer, commits)
 	if err != nil {
@@ -527,26 +562,16 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 		V: d.suite.Scalar().Sub(fie, sharedKey),
 	}
 
-	pubPoly := share.NewPubPoly(d.suite, nil, commits)
+	if validCommits {
+		pubPoly := share.NewPubPoly(d.suite, nil, commits)
 
-	if pubPoly.Check(fi) {
-		log.Infof("Received valid share from dealer %v", dealerIndex)
-	} else {
-		err := fmt.Errorf("received invalid share from dealer %v", dealerIndex)
-
-		if d.ignoreInvalid {
-			return err
-		}
-
-		go func() {
-			<-distributionEnd
-
-			if err := d.DisputeShare(dealerIndex, shares); err != nil {
-				log.Errorf("Dispute share: %v", err)
+		if pubPoly.Check(fi) {
+			log.Infof("Received valid broadcast from dealer %v", dealerIndex)
+		} else {
+			if !d.ignoreInvalid {
+				d.scheduleDispute(dealerIndex, shares, distributionEnd)
 			}
-		}()
-
-		return nil
+		}
 	}
 
 	d.shares[dealerIndex] = fi.V
@@ -557,6 +582,33 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	}
 
 	return nil
+}
+
+func (d *DistKeyGenerator) WatchDistributionEndLog(ctx context.Context) error {
+	distributionEndLogs := make(chan *ZKDKGContractDistributionEndLog)
+	defer close(distributionEndLogs)
+
+	sub, err := d.contract.WatchDistributionEndLog(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		distributionEndLogs,
+	)
+	if err != nil {
+		return err
+	}
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case <-distributionEndLogs:
+			return nil
+		case err = <-sub.Err():
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (d *DistKeyGenerator) WatchDisputeShareLog(ctx context.Context) error {
@@ -574,27 +626,28 @@ func (d *DistKeyGenerator) WatchDisputeShareLog(ctx context.Context) error {
 	}
 	defer sub.Unsubscribe()
 
-	select {
-	case event := <-sink:
-		if err := d.HandleDisputeShareLog(event); err != nil {
-			return fmt.Errorf("handle event: %v", err)
+	for {
+		select {
+		case event := <-sink:
+			if err := d.HandleDisputeShareLog(event); err != nil {
+				return fmt.Errorf("handle event: %v", err)
+			}
+		case err = <-sub.Err():
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-
-		return nil
-	case err = <-sub.Err():
-		return err
-	case <-ctx.Done():
-		return nil
 	}
 }
 
 func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContractDisputeShare) error {
+	log.Infof("Received dispute for dealer %d", disputeShareEvent.DisputeeIndex)
+
+	d.extendedPeriod = true
+
 	if d.index != disputeShareEvent.DisputeeIndex {
-		log.Infof("Received dispute for dealer %d, aborting", disputeShareEvent.DisputeeIndex)
 		return nil
 	}
-
-	d.disputed = true
 
 	log.Info("Received dispute against own broadcast, defending")
 
@@ -695,7 +748,38 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 	return nil
 }
 
-func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk *big.Int) error {
+func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
+	sink := make(chan *ZKDKGContractExclusion)
+	defer close(sink)
+
+	sub, err := d.contract.WatchExclusion(
+		&bind.WatchOpts{
+			Context: ctx,
+		},
+		sink,
+	)
+	if err != nil {
+		return err
+	}
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case event := <-sink:
+			d.HandleExclusion(event.Index)
+		case err = <-sub.Err():
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (d *DistKeyGenerator) HandleExclusion(index uint64) {
+	d.commitments[index][0] = d.suite.Point().Null()
+}
+
+func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context) error {
 	sink := make(chan *ZKDKGContractPublicKeySubmission)
 	defer close(sink)
 
@@ -712,115 +796,14 @@ func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, pk *
 
 	for {
 		select {
-		case event := <-sink:
-			log.Infof("Handling public key submission log...")
-			if err := d.HandlePublicKeySubmissionLog(event, pk); err != nil {
-				log.Errorf("Handling public key submission log failed: %v", err)
-			}
+		case <-sink:
+			return nil
 		case err = <-sub.Err():
 			return err
 		case <-ctx.Done():
 			return nil
 		}
 	}
-}
-
-func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(pkSubmissionLog *ZKDKGContractPublicKeySubmission, computedPk *big.Int) error {
-	submissionTx, _, err := d.client.TransactionByHash(context.Background(), pkSubmissionLog.Raw.TxHash)
-	if err != nil {
-		return fmt.Errorf("transaction by hash: %w", err)
-	}
-
-	txData := submissionTx.Data()
-	a, err := abi.JSON(strings.NewReader(ZKDKGContractABI))
-	if err != nil {
-		return fmt.Errorf("abi from json: %w", err)
-	}
-
-	method, err := a.MethodById(txData[:4])
-	if err != nil {
-		return fmt.Errorf("method by id: %w", err)
-	}
-
-	inputs, err := method.Inputs.Unpack(txData[4:])
-	if err != nil {
-		return fmt.Errorf("unpack inputs: %w", err)
-	}
-
-	submittedPk := inputs[0].(*big.Int)
-
-	if computedPk.Cmp(submittedPk) == 0 {
-		log.Infoln("Public key valid")
-		return nil
-	}
-
-	log.Infoln("Submitted public key invalid")
-
-	if d.ignoreInvalid {
-		return nil
-	}
-
-	args := make([]*big.Int, 0)
-
-	firstCoefficients := make([]byte, 0)
-	for i := uint64(0); i < uint64(len(d.participants)); i++ {
-		firstCoefficient := d.commitments[i][0]
-
-		bin, err := firstCoefficient.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("marshal binary coefficient: %w", err)
-		}
-
-		point, err := PointToBig(firstCoefficient)
-		if err != nil {
-			return fmt.Errorf("coefficient to big: %w", err)
-		}
-		firstCoefficients = append(firstCoefficients, bin...)
-		args = append(args, point)
-	}
-
-	args = append(args, submittedPk)
-
-	rawHash := crypto.Keccak256(firstCoefficients)
-	hash := []*big.Int{
-		new(big.Int).SetBytes(rawHash[:16]),
-		new(big.Int).SetBytes(rawHash[16:]),
-	}
-
-	args = append(args, hash...)
-
-	log.Infof("Args: %d", args)
-
-	if err := d.polyProver.ComputeWitness(context.Background(), KeyDerivProof, args); err != nil {
-		return fmt.Errorf("compute witness for public key proof: %w", err)
-	}
-
-	proof, err := d.polyProver.GenerateProof(context.Background(), KeyDerivProof)
-	if err != nil {
-		return fmt.Errorf("generate proof for public key: %w", err)
-	}
-
-	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
-	if err != nil {
-		return fmt.Errorf("keyed transactor with chainID: %w", err)
-	}
-	opts.GasPrice = big.NewInt(1000000000)
-
-	disputeTx, err := d.contract.DisputePublicKey(opts, KeyVerifierProof(*proof.Proof))
-	if err != nil {
-		return fmt.Errorf("dispute public key: %w", err)
-	}
-
-	receipt, err := bind.WaitMined(context.Background(), d.client, disputeTx)
-	if err != nil {
-		return fmt.Errorf("wait mined register: %w", err)
-	}
-
-	if receipt.Status == types.ReceiptStatusFailed {
-		return errors.New("receipt status failed")
-	}
-
-	return nil
 }
 
 func (d *DistKeyGenerator) DisputeShare(disputeeIndex uint64, shares []*big.Int) error {
@@ -992,4 +975,18 @@ func (d *DistKeyGenerator) estimateGas(ctx context.Context, fn string, args ...i
 		To: &d.contractAddress,
 		Data: data,
 	})
+}
+
+func (d *DistKeyGenerator) scheduleDispute(dealerIndex uint64, shares []*big.Int, distributionEnd <-chan struct{}) {
+	log.Infof("Starting dispute against dealer %d after distribution end", dealerIndex)
+
+	go func() {
+		<-distributionEnd
+
+		log.Infof("Disputing invalid broadcast from dealer %d", dealerIndex)
+
+		if err := d.DisputeShare(dealerIndex, shares); err != nil {
+			log.Errorf("Dispute commits: %v", err)
+		}
+	}()
 }
