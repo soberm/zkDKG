@@ -160,8 +160,6 @@ func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof
 	}
 
 	if p.pipe != nil {
-		defer p.pipe.Close()
-
 		json, err := p.dc.ContainerInspect(ctx, resp.ID)
 		if err != nil {
 			return nil, fmt.Errorf("inspect container: %w", err)
@@ -183,4 +181,10 @@ func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof
 	}
 
 	return proof, nil
+}
+
+func (p *Prover) Close() {
+	if p.pipe != nil {
+		p.pipe.Close()
+	}
 }

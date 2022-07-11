@@ -5,6 +5,7 @@ import (
 	"client/pkg/dkg"
 	"context"
 	"flag"
+	"fmt"
 	"math/big"
 	"os"
 
@@ -23,59 +24,69 @@ func main() {
 	viper.SetConfigFile(*configFile)
 	viper.SetConfigType("json")
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatalf("read config: %v", err)
+		exit("Read config: %w", err)
 	}
 
 	var config dkg.Config
 	err := viper.Unmarshal(&config)
 	if err != nil {
-		log.Fatalf("unmarshal config into struct, %v", err)
+		exit("Unmarshal config into struct, %w", err)
 	}
 
 	var pipe *os.File = nil
 	if *idPipe != "" {
 		if pipe, err = os.OpenFile(*idPipe, os.O_WRONLY, os.ModeNamedPipe); err != nil {
-			log.Errorf("Open pipe: %v", err)
-			os.Exit(1)
+			exit("Open pipe: %w", err)
 		}
 	}
 
 	prover, err := dkg.NewProver(config.MountSource, pipe)
 	if err != nil {
-		log.Errorf("Create prover: %v", err)
-		os.Exit(1)
+		exit("Create prover: %w", err)
 	}
+
+	defer prover.Close()
 
 	curve := &curve25519.ProjectiveCurve{}
 	curve.Init(dkg.ParamBabyJubJub(), false)
 	suite := &curve25519.SuiteCurve25519{ProjectiveCurve: *curve}
 
-	threshold := (*participants + 1) / 2
-	args := make([]*big.Int, 0)
-	commits := make([]kyber.Point, threshold)
-	commitsHashInput := make([]byte, 0)
-
-	for i := 0; i < len(commits); i++ {
-		commits[i] = suite.Point().Pick(suite.RandomStream())
+	success := true
+	if err := measurePolyEval(prover, int(*participants), suite, config.DkgPrivateKey); err != nil {
+		success = false
+		log.Errorf("Poly eval: %w", err)
 	}
 
-	for i := 0; i < len(commits); i++ {
-		commit := commits[i].(*curve25519.ProjPoint)
-		commitX, commitY := commit.GetXY()
+	if err := measureKeyDeriv(prover, int(*participants), suite); err != nil {
+		success = false
+		log.Errorf("Key deriv: %w", err)
+	}
+
+	if !success {
+		os.Exit(1)
+	}
+}
+
+func measurePolyEval(prover *dkg.Prover, participants int, suite *curve25519.SuiteCurve25519, privateKey string) error {
+	threshold := (participants + 1) / 2
+	args := make([]*big.Int, 0)
+	pointsHashInput := make([]byte, 0)
+
+	for i := 0; i < threshold; i++ {
+		point := suite.Point().Pick(suite.RandomStream()).(*curve25519.ProjPoint)
+		commitX, commitY := point.GetXY()
 		args = append(args, &commitX.V, &commitY.V)
 
-		compressed, err := commit.MarshalBinary()
+		compressed, err := point.MarshalBinary()
 		if err != nil {
-			log.Errorf("Marshal commit: %v", err)
-			os.Exit(1)
+			return fmt.Errorf("marshal commit: %w", err)
 		}
-		commitsHashInput = append(commitsHashInput, compressed...)
+		pointsHashInput = append(pointsHashInput, compressed...)
 	}
 
-	long, err := dkg.HexToScalar(suite, config.DkgPrivateKey)
+	long, err := dkg.HexToScalar(suite, privateKey)
 	if err != nil {
-		log.Errorf("Hex to scalar: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("hex to scalar: %w", err)
 	}
 
 	sk, _ := long.MarshalBinary()
@@ -96,11 +107,11 @@ func main() {
 	shareBig := new(big.Int).SetBytes(share)
 	args = append(args, shareBig)
 
-	commitsHash := crypto.Keccak256(commitsHashInput)
+	pointsHash := crypto.Keccak256(pointsHashInput)
 
 	hashInput := make([]byte, 0)
 
-	hashInput = append(hashInput, commitsHash...)
+	hashInput = append(hashInput, pointsHash...)
 
 	pubProoferBin, _ := pubProofer.MarshalBinary()
 	hashInput = append(hashInput, pubProoferBin...)
@@ -124,12 +135,60 @@ func main() {
 	log.Infof("Args: %v", args)
 
 	if err := prover.ComputeWitness(context.Background(), dkg.EvalPolyProof, args); err != nil {
-		log.Errorf("Compute witness: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("compute witness: %w", err)
 	}
 
 	if _, err := prover.GenerateProof(context.Background(), dkg.EvalPolyProof); err != nil {
-		log.Errorf("Compute proof: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("generate proof: %w", err)
 	}
+
+	return nil
+}
+
+func measureKeyDeriv(prover *dkg.Prover, participants int, suite *curve25519.SuiteCurve25519) error {
+	args := make([]*big.Int, 0)
+	commits := make([]kyber.Point, participants)
+
+	for i := 0; i < len(commits); i++ {
+		commits[i] = suite.Point().Pick(suite.RandomStream())
+	}
+
+	firstCoefficients := make([]byte, 0)
+	for i := 0; i < participants; i++ {
+		commit := suite.Point().Pick(suite.RandomStream()).(*curve25519.ProjPoint)
+		coeffX, coeffY := commit.GetXY()
+
+		coeffBin, err := commit.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal coefficient: %w", err)
+		}
+		firstCoefficients = append(firstCoefficients, coeffBin...)
+
+		args = append(args, &coeffX.V, &coeffY.V)
+	}
+
+	rawHash := crypto.Keccak256(firstCoefficients)
+	hash := []*big.Int{
+		new(big.Int).SetBytes(rawHash[:16]),
+		new(big.Int).SetBytes(rawHash[16:]),
+	}
+
+	args = append(args, hash...)
+
+	log.Infof("Args: %v", args)
+
+	if err := prover.ComputeWitness(context.Background(), dkg.KeyDerivProof, args); err != nil {
+		return fmt.Errorf("compute witness: %w", err)
+	}
+
+	if _, err := prover.GenerateProof(context.Background(), dkg.KeyDerivProof); err != nil {
+		return fmt.Errorf("generate proof: %w", err)
+	}
+
+	return nil
+}
+
+func exit(format string, args ...interface{}) {
+	log.Errorf(format, args...)
+	os.Exit(1)
 }

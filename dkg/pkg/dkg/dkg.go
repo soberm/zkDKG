@@ -417,6 +417,8 @@ func (d *DistKeyGenerator) checkExpiredDisputes() error {
 }
 
 func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
+	defer d.polyProver.Close()
+
 	args := make([]*big.Int, 0)
 
 	firstCoefficients := make([]byte, 0)
