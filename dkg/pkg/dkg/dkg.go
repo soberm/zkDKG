@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/iden3/go-iden3-crypto/poseidon"
 	log "github.com/sirupsen/logrus"
 	"go.dedis.ch/kyber/v3"
@@ -316,38 +317,68 @@ func (d *DistKeyGenerator) CollectParticipants() error {
 
 }
 
-func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
+func WatchEvent[K any](
+	ctx context.Context,
+	subscribeLog func(*bind.WatchOpts, chan<- K) (event.Subscription, error),
+	afterSubscribe func() error,
+	handleEvent func(K) error,
+	once bool,
+) error {
+	events := make(chan K)
+	defer close(events)
 
-	registrationEndLogs := make(chan *ZKDKGContractRegistrationEndLog)
-	defer close(registrationEndLogs)
-
-	sub, err := d.contract.WatchRegistrationEndLog(
+	sub, err := subscribeLog(
 		&bind.WatchOpts{
 			Context: ctx,
 		},
-		registrationEndLogs,
+		events,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("subscribe log: %w", err)
 	}
 	defer sub.Unsubscribe()
 
-	if err := d.Register(ctx); err != nil {
-		return fmt.Errorf("register: %w", err)
+	if afterSubscribe != nil {
+		if err := afterSubscribe(); err != nil {
+			return fmt.Errorf("after subscribe: %w", err)
+		}
 	}
-
-	log.Info("Waiting until registration is finished...")
 
 	for {
 		select {
-		case <-registrationEndLogs:
-			return nil
-		case err = <-sub.Err():
-			return err
+		case event := <-events:
+			if handleEvent != nil {
+				if err := handleEvent(event); err != nil {
+					return fmt.Errorf("handle event: %w", err)
+				}
+			}
+		case err := <-sub.Err():
+			return fmt.Errorf("subscription: %w", err)
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("context: %w", ctx.Err())
+		}
+
+		if once {
+			return nil
 		}
 	}
+}
+
+func (d *DistKeyGenerator) RegisterAndWait(ctx context.Context) error {
+	return WatchEvent(
+		ctx,
+		d.contract.WatchRegistrationEndLog,
+		func() error {
+			if err := d.Register(ctx); err != nil {
+				return fmt.Errorf("register: %w", err)
+			}
+
+			log.Info("Waiting until registration is finished...")
+			return nil
+		},
+		nil,
+		true,
+	)
 }
 
 func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
@@ -485,33 +516,15 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 }
 
 func (d *DistKeyGenerator) WatchBroadcastSharesLog(ctx context.Context, distributionEnd, broadcastsCollected chan struct{}) error {
-	sink := make(chan *ZKDKGContractBroadcastSharesLog)
-	defer close(sink)
-
-	sub, err := d.contract.WatchBroadcastSharesLog(
-		&bind.WatchOpts{
-			Context: ctx,
+	return WatchEvent(
+		ctx,
+		d.contract.WatchBroadcastSharesLog,
+		nil,
+		func(event *ZKDKGContractBroadcastSharesLog) error {
+			return d.HandleBroadcastSharesLog(event, distributionEnd, broadcastsCollected)
 		},
-		sink,
+		false,
 	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case event := <-sink:
-			if err := d.HandleBroadcastSharesLog(event, distributionEnd, broadcastsCollected); err != nil {
-				return fmt.Errorf("handle event: %v", err)
-			}
-		
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 }
 
 func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGContractBroadcastSharesLog, distributionEnd, broadcastsCollected chan struct{}) error {
@@ -597,59 +610,23 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 }
 
 func (d *DistKeyGenerator) WatchDistributionEndLog(ctx context.Context) error {
-	distributionEndLogs := make(chan *ZKDKGContractDistributionEndLog)
-	defer close(distributionEndLogs)
-
-	sub, err := d.contract.WatchDistributionEndLog(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		distributionEndLogs,
+	return WatchEvent(
+		ctx,
+		d.contract.WatchDistributionEndLog,
+		nil,
+		nil,
+		true,
 	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case <-distributionEndLogs:
-			return nil
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 }
 
 func (d *DistKeyGenerator) WatchDisputeShareLog(ctx context.Context) error {
-	sink := make(chan *ZKDKGContractDisputeShare)
-	defer close(sink)
-
-	sub, err := d.contract.WatchDisputeShare(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		sink,
+	return WatchEvent(
+		ctx,
+		d.contract.WatchDisputeShare,
+		nil,
+		d.HandleDisputeShareLog,
+		false,
 	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case event := <-sink:
-			if err := d.HandleDisputeShareLog(event); err != nil {
-				return fmt.Errorf("handle event: %v", err)
-			}
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 }
 
 func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContractDisputeShare) error {
@@ -761,30 +738,16 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 }
 
 func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
-	sink := make(chan *ZKDKGContractExclusion)
-	defer close(sink)
-
-	sub, err := d.contract.WatchExclusion(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		sink,
-	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case event := <-sink:
+	return WatchEvent(
+		ctx,
+		d.contract.WatchExclusion,
+		nil,
+		func(event *ZKDKGContractExclusion) error {
 			d.HandleExclusion(event.Index)
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
+			return nil
+		},
+		false,
+	)
 }
 
 func (d *DistKeyGenerator) HandleExclusion(index uint64) {
@@ -793,30 +756,15 @@ func (d *DistKeyGenerator) HandleExclusion(index uint64) {
 }
 
 func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point) error {
-	sink := make(chan *ZKDKGContractPublicKeySubmission)
-	defer close(sink)
-
-	sub, err := d.contract.WatchPublicKeySubmission(
-		&bind.WatchOpts{
-			Context: ctx,
-		},
-		sink,
-	)
-	if err != nil {
-		return err
-	}
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case event := <-sink:
+	return WatchEvent(
+		ctx,
+		d.contract.WatchPublicKeySubmission,
+		nil,
+		func(event *ZKDKGContractPublicKeySubmission) error {
 			return d.HandlePublicKeySubmissionLog(ctx, computedPk, event)
-		case err = <-sub.Err():
-			return err
-		case <-ctx.Done():
-			return nil
-		}
-	}
+		},
+		true,
+	)
 }
 
 func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point, event *ZKDKGContractPublicKeySubmission) error {
