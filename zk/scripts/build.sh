@@ -36,17 +36,17 @@ for name in ${!inputs[@]}; do
     # Zokrates has problems with accepting input directly from stdin via /dev/stdin and piping, so temporarily store "generated" file
     sed -E "s/^\/\/ (const u32 PARTICIPANTS =).*/\1 $participants/" $source > $generated
 
-    # A matching checksum indicates that all files were already built with the same input file, continue
+    # A matching checksum indicates that all files were already built with the same input file
     if [[ -f $checksumFile ]] && $(sha1sum -c --status $checksumFile); then
-        echo "Build files for $name are up-to-date, skipping"
-        continue
+        echo "Build files for $name are up-to-date, skipping compilation"
+    else
+        zokrates compile -i $generated -s $buildDir/abi.json -o $buildDir/out
+        zokrates setup -i $buildDir/out --proving-key-path $buildDir/proving.key --verification-key-path $buildDir/verification.key
+        zokrates export-verifier -i $buildDir/verification.key -o $buildDir/verifier.sol
+
+        # Compute checksum to indicate a successful build using the current source file
+        sha1sum $generated > $checksumFile
     fi
-
-    zokrates compile -i $generated -s $buildDir/abi.json -o $buildDir/out
-
-    zokrates setup -i $buildDir/out --proving-key-path $buildDir/proving.key --verification-key-path $buildDir/verification.key
-
-    zokrates export-verifier -i $buildDir/verification.key -o $buildDir/verifier.sol
 
     # The pairing contract is only required once
     if [[ $name == "poly_eval" ]]; then
@@ -56,7 +56,4 @@ for name in ${!inputs[@]}; do
 
     verifier=$(sed -ne "s/Verifier/$contractName/" -e "/^contract $contractName/,/^}/p" $buildDir/verifier.sol)
     echo -e "${prefixWithImport}${verifier}" > $contracts/$contractName.sol
-
-    # Compute checksum to indicate a succesful build using the current source file
-    sha1sum $generated > $checksumFile
 done
