@@ -70,48 +70,48 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 
 	client, err := ethclient.Dial(config.EthereumNode)
 	if err != nil {
-		return nil, fmt.Errorf("dial eth client: %v", err)
+		return nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
 	chainID, err := client.ChainID(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("chainID: %v", err)
+		return nil, fmt.Errorf("chainID: %w", err)
 	}
 
 	contractAbi, err := abi.JSON(strings.NewReader(ZKDKGContractMetaData.ABI))
 	if err != nil {
-		return nil, fmt.Errorf("read abi: %v", err)
+		return nil, fmt.Errorf("read abi: %w", err)
 	}
 
 	contractAddress := common.HexToAddress(config.ContractAddress)
 
 	contract, err := NewZKDKGContract(contractAddress, client)
 	if err != nil {
-		return nil, fmt.Errorf("zkDKG contract: %v", err)
+		return nil, fmt.Errorf("zkDKG contract: %w", err)
 	}
 
 	ethereumPrivateKey, err := crypto.HexToECDSA(config.EthereumPrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("hex to ecdsa: %v", err)
+		return nil, fmt.Errorf("hex to ecdsa: %w", err)
 	}
 
 	ethereumPublicKey := crypto.PubkeyToAddress(ethereumPrivateKey.PublicKey)
 
 	long, err := HexToScalar(suite, config.DkgPrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("hex to scalar: %v", err)
+		return nil, fmt.Errorf("hex to scalar: %w", err)
 	}
 
 	var pipe *os.File = nil
 	if idPipe != "" {
 		if pipe, err = os.OpenFile(idPipe, os.O_WRONLY, os.ModeNamedPipe); err != nil {
-			return nil, fmt.Errorf("open pipe: %v", err)
+			return nil, fmt.Errorf("open pipe: %w", err)
 		}
 	}
 
 	polyProver, err := NewProver(config.MountSource, pipe)
 	if err != nil {
-		return nil, fmt.Errorf("prover: %v", err)
+		return nil, fmt.Errorf("prover: %w", err)
 	}
 
 	return &DistKeyGenerator{
@@ -150,14 +150,14 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	if !d.broadcastOnly {
 		g.Go(func() error {
 			if err := d.WatchBroadcastSharesLog(ctx, distributionEnd, broadcastsCollected); err != nil {
-				return fmt.Errorf("watching broadcast shares log failed: %v", err)
+				return fmt.Errorf("watching broadcast shares log failed: %w", err)
 			}
 			return nil
 		})
 
 		g.Go(func() error {
 			if err := d.WatchDistributionEndLog(ctx); err != nil {
-				return fmt.Errorf("watching distribution end log failed: %v", err)
+				return fmt.Errorf("watching distribution end log failed: %w", err)
 			}
 			close(distributionEnd)
 			return nil
@@ -165,14 +165,14 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 
 		g.Go(func() error {
 			if err := d.WatchDisputeShareLog(ctx); err != nil {
-				return fmt.Errorf("watching dispute share log failed: %v", err)
+				return fmt.Errorf("watching dispute share log failed: %w", err)
 			}
 			return nil
 		})
 
 		g.Go(func() error {
 			if err := d.WatchExclusion(ctx); err != nil {
-				return fmt.Errorf("watching exclusion failed: %v", err)
+				return fmt.Errorf("watching exclusion failed: %w", err)
 			}
 			return nil
 		})
@@ -189,7 +189,7 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	}
 
 	if err := d.RegisterAndWait(ctx); err != nil {
-		return nil, fmt.Errorf("register and wait: %v", err)
+		return nil, fmt.Errorf("register and wait: %w", err)
 	}
 
 	if err := d.CollectParticipants(); err != nil {
@@ -225,18 +225,18 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	}
 
 	if err := d.checkExpiredDisputes(); err != nil {
-		return nil, fmt.Errorf("check expired disputes: %v", err)
+		return nil, fmt.Errorf("check expired disputes: %w", err)
 	}
 
 	pub, err := d.ComputePublicKey()
 	if err != nil {
-		return nil, fmt.Errorf("compute public key: %v", err)
+		return nil, fmt.Errorf("compute public key: %w", err)
 	}
 
 	pkLog := make(chan struct{})
 	g.Go(func() error {
 		if err := d.WatchPublicKeySubmissionLog(ctx, pub); err != nil {
-			return fmt.Errorf("watching public key submission log failed: %v", err)
+			return fmt.Errorf("watching public key submission log failed: %w", err)
 		}
 		close(pkLog)
 		return nil
@@ -419,7 +419,7 @@ func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
 
 func (d *DistKeyGenerator) durationUntilPhaseEnd() time.Duration {
 	if period, err := d.contract.PhaseEnd(nil); err != nil {
-		log.Warnf("Failed to retrieve current phase end, using fallback value: %w", err)
+		log.Warnf("Failed to retrieve current phase end, using fallback value: %v", err)
 		duration, _ := time.ParseDuration("5m")
 		return duration
 	} else {
@@ -450,7 +450,7 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 func (d *DistKeyGenerator) checkExpiredDisputes() error {
 	indices, err := d.contract.ExpiredDisputes(nil, big.NewInt(time.Now().Unix()))
 	if err != nil {
-		return fmt.Errorf("contract call: %v", err)
+		return fmt.Errorf("contract call: %w", err)
 	}
 
 	for i, expired := range indices {
@@ -476,7 +476,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 
 		coeffBin, err := firstCoefficient.MarshalBinary()
 		if err != nil {
-			return fmt.Errorf("marshal coefficient: %v", err)
+			return fmt.Errorf("marshal coefficient: %w", err)
 		}
 		firstCoefficients = append(firstCoefficients, coeffBin...)
 
@@ -556,7 +556,7 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 
 	inputs, err := d.getTxInputs(broadcastSharesLog.Raw.TxHash)
 	if err != nil {
-		return fmt.Errorf("get tx inputs: %v", err)
+		return fmt.Errorf("get tx inputs: %w", err)
 	}
 
 	commitments := inputs[0].([]*big.Int)
@@ -803,7 +803,7 @@ func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, comp
 func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point, event *ZKDKGContractPublicKeySubmission) error {
 	inputs, err := d.getTxInputs(event.Raw.TxHash)
 	if err != nil {
-		return fmt.Errorf("get tx inputs: %v", err)
+		return fmt.Errorf("get tx inputs: %w", err)
 	}
 
 	submittedPkBig := inputs[0].([2]*big.Int)
