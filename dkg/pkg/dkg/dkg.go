@@ -58,6 +58,7 @@ type DistKeyGenerator struct {
 	broadcastOnly		bool
 }
 
+var errAbortion error = errors.New("protocol aborted due to insufficient remaining participants")
 const bufferTimeInSecs uint64 = 2
 
 func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInvalid, broadcastOnly bool) (*DistKeyGenerator, error) {
@@ -175,6 +176,16 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 			}
 			return nil
 		})
+
+		g.Go(func() error {
+			if err := d.WatchAbortion(ctx); err != nil {
+				if errors.Is(err, errAbortion) {
+					return errAbortion
+				}
+				return fmt.Errorf("watching abortion failed: %w", err)
+			}
+			return nil
+		})
 	}
 
 	if err := d.RegisterAndWait(ctx); err != nil {
@@ -232,6 +243,10 @@ func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
 	})
 
 	if err := d.SubmitPublicKey(pub); err != nil {
+		if errors.Is(err, errAbortion) {
+			return nil, err
+		}
+
 		if ctx.Err() != nil {
 			return nil, g.Wait()
 		}
@@ -507,6 +522,12 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 		return fmt.Errorf("wait mined submit: %w", err)
 	}
 
+	for _, eventLog := range receipt.Logs {
+		if eventLog.Topics[0] == crypto.Keccak256Hash([]byte("Abortion()")) {
+			return errAbortion
+		}
+	}
+
 	if receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("receipt status failed")
 	}
@@ -750,6 +771,18 @@ func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
 	)
 }
 
+func (d *DistKeyGenerator) WatchAbortion(ctx context.Context) error {
+	return WatchEvent(
+		ctx,
+		d.contract.WatchAbortion,
+		nil,
+		func(*ZKDKGContractAbortion) error {
+			return errAbortion
+		},
+		true,
+	)
+}
+
 func (d *DistKeyGenerator) HandleExclusion(index uint64) {
 	d.commitments[index][0] = d.suite.Point().Null()
 	d.shares[index] = d.suite.Scalar()
@@ -838,7 +871,7 @@ func (d *DistKeyGenerator) DistKeyShare() (*DistKeyShare, error) {
 }
 
 func (d *DistKeyGenerator) DistributeShares() error {
-	threshold, err := d.contract.Threshold(nil)
+	threshold, err := d.contract.MinimumThreshold(nil)
 	if err != nil {
 		return fmt.Errorf("threshold: %w", err)
 	}

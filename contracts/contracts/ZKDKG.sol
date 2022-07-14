@@ -9,6 +9,8 @@ contract ZKDKG {
     uint public constant STAKE = 0 ether;
 
     uint public immutable noParticipants;
+    uint public immutable minimumThreshold;
+    uint public immutable userThreshold;
     uint16 public immutable periodLength;
 
     Phase public phase;
@@ -19,7 +21,7 @@ contract ZKDKG {
 
     mapping(address => bytes32) public commitmentHashes;
     mapping(address => bytes32) public shareHashes;
-    uint256[] public firstCoefficients;
+    uint[] public firstCoefficients;
 
     // Compressed encoding of the point at infinity (0, 1)
     uint private constant INFINITY = 1;
@@ -53,18 +55,30 @@ contract ZKDKG {
     event RegistrationEndLog();
     event DistributionEndLog();
     event PublicKeySubmission();
+    event Abortion();
     event Reset();
     event Exclusion(uint64 index);
 
     constructor(
         address _shareVerifier,
         address _keyVerifier,
-        uint256 _noParticipants,
+        uint _noParticipants,
+        uint _userThreshold,
         uint16 _periodLength
     ) {
+        uint _minimumThreshold = (_noParticipants + 1) / 2;
+
+        require(
+            _userThreshold >= _minimumThreshold && _userThreshold <= _noParticipants,
+            "user threshold has to be between the mathematical minimum threshold and the number of participants (inclusively)"
+        );
+
         shareVerifier = ShareVerifier(_shareVerifier);
         keyVerifier = KeyVerifier(_keyVerifier);
+
         noParticipants = _noParticipants;
+        minimumThreshold = _minimumThreshold;
+        userThreshold = _userThreshold;
         periodLength = _periodLength;
 
         // Avoid higher costs for the last participant that calls register
@@ -95,12 +109,12 @@ contract ZKDKG {
         }
     }
 
-    function broadcastShares(uint256[] memory commitments, uint256[] memory shares) external registered {
+    function broadcastShares(uint[] memory commitments, uint[] memory shares) external registered {
         require(phase == Phase.BROADCAST_SUBMIT, "broadcast period has not started yet");
         require(block.timestamp <= phaseEnd, "broadcast period has expired");
         require(commitmentHashes[msg.sender] == 0, "already broadcasted before");
         require(shares.length == addresses.length - 1, "invalid number of shares");
-        require(commitments.length == threshold(), "invalid number of commitments");
+        require(commitments.length == minimumThreshold, "invalid number of commitments");
 
         firstCoefficients.push(commitments[0]);
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
@@ -116,7 +130,7 @@ contract ZKDKG {
         }
     }
 
-    function disputeShare(uint64 disputeeIndex, uint256[] calldata shares) external registered {
+    function disputeShare(uint64 disputeeIndex, uint[] calldata shares) external registered {
         address disputeeAddr = addresses[disputeeIndex - 1];
         
         require(phase == Phase.BROADCAST_DISPUTE && block.timestamp <= phaseEnd, "not in dispute period");
@@ -127,7 +141,7 @@ contract ZKDKG {
 
         // TODO Check that disputer public key is valid
 
-        uint256 shareIndex = disputerIndex;
+        uint shareIndex = disputerIndex;
 
         // The shares of each dealer don't include a share for themselves, so there's a "closed gap" in each shares array
         if (shareIndex > disputeeIndex) {
@@ -156,19 +170,19 @@ contract ZKDKG {
         address disputee = addresses[dispute.disputeeIndex - 1];
         address disputer = addresses[dispute.disputerIndex - 1];
 
-        uint256[2] memory hash = hashToUint128(
+        uint[2] memory hash = hashToUint128(
             keccak256(
                 bytes.concat(
                     commitmentHashes[disputee],
                     bytes32(participants[disputee].publicKey),
                     bytes32(participants[disputer].publicKey),
-                    bytes32(uint256(dispute.disputerIndex)),
+                    bytes32(uint(dispute.disputerIndex)),
                     bytes32(dispute.share)
                 )
             )
         );
 
-        uint256[3] memory input = [
+        uint[3] memory input = [
             hash[0],
             hash[1],
             1
@@ -245,14 +259,14 @@ contract ZKDKG {
     }
 
     function excludeNode(uint64 disputerIndex) internal {
-        // Share and commitment hashes are not used after a dispute, no need to delete them here
-
-        address addr = addresses[disputerIndex - 1];
-
         firstCoefficients[disputerIndex - 1] = INFINITY;
-        delete participants[addr];
+        delete participants[addresses[disputerIndex - 1]];
 
         emit Exclusion(disputerIndex);
+
+        if (participantsCount() < userThreshold) {
+            emit Abortion();
+        }
     }
 
     function expiredDisputes(uint timestamp) public view returns (bool[] memory) {
@@ -278,6 +292,16 @@ contract ZKDKG {
         }
     }
 
+    function participantsCount() internal view returns (uint) {
+        uint count = 0;
+        for (uint i = 0; i < addresses.length; i++) {
+            if (participants[addresses[i]].index != 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     function isRegistered(address _addr) public view returns (bool) {
         if (addresses.length == 0) return false;
         uint index = participants[_addr].index;
@@ -296,19 +320,11 @@ contract ZKDKG {
         return results;
     }
 
-    function threshold() public view returns (uint256) {
-        return (addresses.length + 1) / 2;
-    }
-
-    function hashToUint128(bytes32 _hash)
-        public
-        pure
-        returns (uint256[2] memory)
-    {
-        uint256 hash = uint256(_hash);
+    function hashToUint128(bytes32 _hash) public pure returns (uint[2] memory) {
+        uint hash = uint(_hash);
         uint128 lhs = uint128(hash >> 128);
         uint128 rhs = uint128(hash);
-        return [uint256(lhs), uint256(rhs)];
+        return [uint(lhs), uint(rhs)];
     }
 
     modifier registered() {
