@@ -1,0 +1,23 @@
+import "./u64_array_to_bool_array" as u64_array_to_bool_array
+
+from "field" import FIELD_SIZE_IN_BITS
+import "utils/casts/u64_to_bits" as u64_to_bits
+import "utils/pack/bool/pack128" as pack128
+
+// FIELD_SIZE_IN_BITS is the minimum amount of bits to represent a field.
+// But we are looking for the maximum amount of bits s.t. all values are field elements.
+const u32 SIZE = FIELD_SIZE_IN_BITS - 1
+
+def main(u64[4] hash) -> field:
+    assert(SIZE < 256) // Otherwise the truncation is not necessary
+
+    bool[256] bits = u64_array_to_bool_array(hash)
+    u32 offset = 256 - SIZE
+    field hash_field = 0
+
+    for u32 i in 0..SIZE do
+        u32 exponent = SIZE - i - 1
+        hash_field = hash_field + (bits[i + offset] ? 2 ** exponent : 0)
+    endfor
+
+    return hash_field

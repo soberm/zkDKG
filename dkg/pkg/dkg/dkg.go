@@ -483,13 +483,9 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 		args = append(args, &coeffX.V, &coeffY.V)
 	}
 
-	rawHash := crypto.Keccak256(firstCoefficients)
-	hash := []*big.Int{
-		new(big.Int).SetBytes(rawHash[:16]),
-		new(big.Int).SetBytes(rawHash[16:]),
-	}
+	hash := truncateHash(crypto.Keccak256(firstCoefficients))
 
-	args = append(args, hash...)
+	args = append(args, new(big.Int).SetBytes(hash))
 
 	// This is actually necessary instead of simply accessing via the X and Y properties due to the normalization that takes place in GetXY
 	pubX, pubY := pub.(*curve25519.ProjPoint).GetXY()
@@ -713,13 +709,9 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 
 	hashInput = append(hashInput, fiBig.FillBytes(buf)...)
 
-	rawHash := crypto.Keccak256(hashInput)
-	hash := []*big.Int{
-		new(big.Int).SetBytes(rawHash[:16]),
-		new(big.Int).SetBytes(rawHash[16:]),
-	}
+	hash := truncateHash(crypto.Keccak256(hashInput))
 
-	args = append(args, hash...)
+	args = append(args, new(big.Int).SetBytes(hash))
 
 	log.Infof("Args: %d", args)
 
@@ -1027,4 +1019,11 @@ func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error
 	}
 
 	return inputs, nil
+}
+
+func truncateHash(hash []byte) ([]byte) {
+	// Truncate the first 3 bits s.t. value range is limited to 254 bits (field size of BabyJubJub)
+	hash[0] &= 0b00011111
+
+	return hash
 }

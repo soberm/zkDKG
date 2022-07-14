@@ -1,6 +1,6 @@
 import "./ecc/compressPoints" as compressPoints
 import "./utils/casts/commits_to_u64" as commits_to_u64
-import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
+import "./utils/casts/keccak_to_field" as keccak_to_field
 
 from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS
 import "ecc/edwardsAdd" as edwardsAdd
@@ -10,8 +10,8 @@ import "hashes/keccak/256bit" as keccak256
 const u32 N = PARTICIPANTS
 const u32 N_TIMES_4 = N * 4
 
-def main(private field[N][2] firstCoefficients, field[2] hash) -> field[2]:
-    assert(hash == u64_array_to_field_array::<_,2>(keccak256(compressPoints::<_,N_TIMES_4>(firstCoefficients))))
+def main(private field[N][2] firstCoefficients, field hash) -> field[2]:
+    assert(hash == keccak_to_field(keccak256(compressPoints::<_,N_TIMES_4>(firstCoefficients))))
 
     field[2] key  = BABYJUBJUB_PARAMS.INFINITY
     for u32 i in 0..N do

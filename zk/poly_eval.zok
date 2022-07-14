@@ -3,7 +3,7 @@ import "./utils/casts/bool_array_to_u64_array" as bool_array_to_u64_array
 import "./utils/casts/field_array_to_u64_array" as field_array_to_u64_array
 import "./utils/casts/field_to_u64_array" as field_to_u64_array
 import "./utils/casts/u64_array_to_bool_array" as u64_array_to_bool_array
-import "./utils/casts/u64_array_to_field_array" as u64_array_to_field_array
+import "./utils/casts/keccak_to_field" as keccak_to_field
 
 from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS
 import "ecc/edwardsAdd" as edwardsAdd
@@ -50,12 +50,12 @@ def evalPubPoly(field index, field[N][2] commits) -> field[2]:
     return expected
 
 // TODO index can be u64
-def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDisputer, private field index, private field encryptedShare, field[2] hash) -> bool:
+def main(private field[N][2] commits, private field secretKey, private field[2] pubKeyProofer, private field[2] pubKeyDisputer, private field index, private field encryptedShare, field hash) -> bool:
     assert(proofOfOwnership(pubKeyProofer, secretKey, BABYJUBJUB_PARAMS))
 
     u64[4] commitsHash = keccak256(compressPoints::<_,N_TIMES_4>(commits))
 
-    assert(hash == u64_array_to_field_array::<_,2>(keccak256([
+    assert(hash == keccak_to_field(keccak256([
         ...commitsHash,
         ...compressPoint(pubKeyProofer),
         ...compressPoint(pubKeyDisputer),

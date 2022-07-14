@@ -170,21 +170,19 @@ contract ZKDKG {
         address disputee = addresses[dispute.disputeeIndex - 1];
         address disputer = addresses[dispute.disputerIndex - 1];
 
-        uint[2] memory hash = hashToUint128(
-            keccak256(
-                bytes.concat(
-                    commitmentHashes[disputee],
-                    bytes32(participants[disputee].publicKey),
-                    bytes32(participants[disputer].publicKey),
-                    bytes32(uint(dispute.disputerIndex)),
-                    bytes32(dispute.share)
-                )
+        uint hash = truncateHash(keccak256(
+            bytes.concat(
+                commitmentHashes[disputee],
+                bytes32(participants[disputee].publicKey),
+                bytes32(participants[disputer].publicKey),
+                bytes32(uint(dispute.disputerIndex)),
+                bytes32(dispute.share)
             )
-        );
+        ));
 
-        uint[3] memory input = [
-            hash[0],
-            hash[1],
+
+        uint[2] memory input = [
+            hash,
             1
         ];
 
@@ -200,13 +198,10 @@ contract ZKDKG {
 
         checkExpiredDisputes();
 
-        uint[2] memory hash = hashToUint128(
-            keccak256(abi.encodePacked(firstCoefficients))
-        );
+        uint hash = truncateHash(keccak256(abi.encodePacked(firstCoefficients)));
 
-        uint[4] memory input = [
-            hash[0],
-            hash[1],
+        uint[3] memory input = [
+            hash,
             _publicKey[0],
             _publicKey[1]
         ];
@@ -320,11 +315,9 @@ contract ZKDKG {
         return results;
     }
 
-    function hashToUint128(bytes32 _hash) public pure returns (uint[2] memory) {
-        uint hash = uint(_hash);
-        uint128 lhs = uint128(hash >> 128);
-        uint128 rhs = uint128(hash);
-        return [uint(lhs), uint(rhs)];
+    function truncateHash(bytes32 _hash) internal pure returns (uint) {
+        // Truncate the first 3 bits s.t. value range is limited to 253 bits (longest bit length that only contains BabyJubJub field values)
+        return uint(_hash & hex"1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
     }
 
     modifier registered() {
