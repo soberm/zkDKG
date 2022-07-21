@@ -54,7 +54,6 @@ type DistKeyGenerator struct {
 	commitments         map[uint64][]kyber.Point
 	rogue			    bool
 	ignoreInvalid	    bool
-	disputed			bool
 	broadcastOnly		bool
 }
 
@@ -132,7 +131,6 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		commitments:         make(map[uint64][]kyber.Point),
 		rogue:  			 rogue,
 		ignoreInvalid:		 ignoreInvalid,
-		disputed: 			 false,
 		broadcastOnly:		 broadcastOnly,
 	}, nil
 
