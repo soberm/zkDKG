@@ -34,6 +34,7 @@ type Participant struct {
 }
 
 type DistKeyGenerator struct {
+	ctx					context.Context
 	suite               suites.Suite
 	polyProver          *Prover
 	curveParams         *curve25519.Param
@@ -72,7 +73,8 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		return nil, fmt.Errorf("dial eth client: %w", err)
 	}
 
-	chainID, err := client.ChainID(context.Background())
+	ctx := context.Background()
+	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("chainID: %w", err)
 	}
@@ -114,6 +116,7 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 	}
 
 	return &DistKeyGenerator{
+		ctx: 				 ctx,
 		suite:               suite,
 		polyProver:          polyProver,
 		curveParams:         param,
@@ -137,13 +140,12 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 }
 
 func (d *DistKeyGenerator) Generate() (kyber.Point, error) {
-	ctx := context.Background()
-
 	log.Info("Generating distributed private key...")
 
 	distributionEnd := make(chan struct{})
 	broadcastsCollected := make(chan struct{})
-	g, ctx := errgroup.WithContext(ctx)
+	g, ctx := errgroup.WithContext(d.ctx)
+	d.ctx = ctx
 
 	if !d.broadcastOnly {
 		g.Go(func() error {
@@ -491,11 +493,11 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 
 	log.Infof("Args: %d", args)
 
-	if err := d.polyProver.ComputeWitness(context.Background(), KeyDerivProof, args); err != nil {
+	if err := d.polyProver.ComputeWitness(d.ctx, KeyDerivProof, args); err != nil {
 		return fmt.Errorf("compute witness for public key proof: %w", err)
 	}
 
-	proof, err := d.polyProver.GenerateProof(context.Background(), KeyDerivProof)
+	proof, err := d.polyProver.GenerateProof(d.ctx, KeyDerivProof)
 	if err != nil {
 		return fmt.Errorf("generate proof for public key: %w", err)
 	}
@@ -511,7 +513,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 		return fmt.Errorf("submit public key: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, submitTx)
+	receipt, err := bind.WaitMined(d.ctx, d.client, submitTx)
 	if err != nil {
 		return fmt.Errorf("wait mined submit: %w", err)
 	}
@@ -713,12 +715,12 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 
 	log.Infof("Args: %d", args)
 
-	err = d.polyProver.ComputeWitness(context.Background(), EvalPolyProof, args)
+	err = d.polyProver.ComputeWitness(d.ctx, EvalPolyProof, args)
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
 
-	proof, err := d.polyProver.GenerateProof(context.Background(), EvalPolyProof)
+	proof, err := d.polyProver.GenerateProof(d.ctx, EvalPolyProof)
 	if err != nil {
 		return fmt.Errorf("compute witness: %w", err)
 	}
@@ -734,7 +736,7 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 		return fmt.Errorf("dispute share: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	receipt, err := bind.WaitMined(d.ctx, d.client, tx)
 	if err != nil {
 		return fmt.Errorf("wait mined: %w", err)
 	}
@@ -821,7 +823,7 @@ func (d *DistKeyGenerator) DisputeShare(disputeeIndex uint64, shares []*big.Int)
 		return fmt.Errorf("dispute share: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	receipt, err := bind.WaitMined(d.ctx, d.client, tx)
 	if err != nil {
 		return fmt.Errorf("wait mined register: %w", err)
 	}
@@ -913,7 +915,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	}
 	opts.GasPrice = big.NewInt(1000000000)
 
-	estimate, err := d.estimateGas(context.Background(), "broadcastShares", commitments, shares)
+	estimate, err := d.estimateGas(d.ctx, "broadcastShares", commitments, shares)
 	if err != nil {
 		return fmt.Errorf("estimate gas: %w", err)
 	}
@@ -924,7 +926,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 		return fmt.Errorf("broadcast shares: %w", err)
 	}
 
-	receipt, err := bind.WaitMined(context.Background(), d.client, tx)
+	receipt, err := bind.WaitMined(d.ctx, d.client, tx)
 	if err != nil {
 		return fmt.Errorf("wait mined register: %w", err)
 	}
@@ -995,7 +997,7 @@ func (d *DistKeyGenerator) scheduleDispute(dealerIndex uint64, shares []*big.Int
 }
 
 func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error) {
-	tx, _, err := d.client.TransactionByHash(context.Background(), txHash)
+	tx, _, err := d.client.TransactionByHash(d.ctx, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("transaction by hash: %w", err)
 	}
