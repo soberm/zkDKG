@@ -23,6 +23,8 @@ main() {
     cidFile="$buildRoot"/cid
     cadvisorVer=v0.44.0
 
+    mkdir -p "$buildRoot"
+
     docker run \
     --volume=/:/rootfs:ro \
     --volume=/var/run:/var/run:rw \
