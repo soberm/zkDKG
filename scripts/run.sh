@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd "$(dirname $0)"/../.. || exit 1
+cd "$(dirname $0)"/.. || exit 1
 
 generateOnly=false
 start=3
@@ -51,7 +51,7 @@ main() {
     for ((participants = start; participants <= end; participants++)) do
         echo "Starting to measure runtime for $participants participants"
 
-        ../zk/scripts/build.sh $participants
+        ../scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
         containerPipe="$buildDir"/container_pipe
