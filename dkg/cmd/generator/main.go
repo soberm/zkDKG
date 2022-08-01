@@ -54,12 +54,12 @@ func main() {
 	success := true
 	if err := measurePolyEval(prover, int(*participants), suite, config.DkgPrivateKey); err != nil {
 		success = false
-		log.Errorf("Poly eval: %w", err)
+		log.Errorf("Poly eval: %v", err)
 	}
 
 	if err := measureKeyDeriv(prover, int(*participants), suite); err != nil {
 		success = false
-		log.Errorf("Key deriv: %w", err)
+		log.Errorf("Key deriv: %v", err)
 	}
 
 	if !success {
@@ -124,13 +124,9 @@ func measurePolyEval(prover *dkg.Prover, participants int, suite *curve25519.Sui
 	hashInput = append(hashInput, index.FillBytes(buf)...)
 	hashInput = append(hashInput, shareBig.FillBytes(buf)...)
 
-	rawHash := crypto.Keccak256(hashInput)
-	hash := []*big.Int{
-		new(big.Int).SetBytes(rawHash[:16]),
-		new(big.Int).SetBytes(rawHash[16:]),
-	}
+	hash := dkg.TruncateHash(crypto.Keccak256(hashInput))
 
-	args = append(args, hash...)
+	args = append(args, new(big.Int).SetBytes(hash))
 
 	log.Infof("Args: %v", args)
 
@@ -167,13 +163,9 @@ func measureKeyDeriv(prover *dkg.Prover, participants int, suite *curve25519.Sui
 		args = append(args, &coeffX.V, &coeffY.V)
 	}
 
-	rawHash := crypto.Keccak256(firstCoefficients)
-	hash := []*big.Int{
-		new(big.Int).SetBytes(rawHash[:16]),
-		new(big.Int).SetBytes(rawHash[16:]),
-	}
+	hash := dkg.TruncateHash(crypto.Keccak256(firstCoefficients))
 
-	args = append(args, hash...)
+	args = append(args, new(big.Int).SetBytes(hash))
 
 	log.Infof("Args: %v", args)
 
