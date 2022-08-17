@@ -272,10 +272,7 @@ func (d *DistKeyGenerator) Register(ctx context.Context) error {
 	}
 	opts.GasPrice = big.NewInt(1000000000)
 
-	pub, err := PointToBig(d.pub)
-	if err != nil {
-		return fmt.Errorf("marshal public key: %w", err)
-	}
+	pub := PointToBigUncompressed(d.pub)
 
 	estimate, err := d.estimateGas(ctx, "register", pub)
 	if err != nil {
@@ -298,12 +295,12 @@ func (d *DistKeyGenerator) Register(ctx context.Context) error {
 		return errors.New("receipt status failed")
 	}
 
-	participant, err := d.contract.Participants(nil, d.ethereumAddress)
+	index, err := d.contract.Participants(nil, d.ethereumAddress)
 	if err != nil {
 		return fmt.Errorf("participants: %w", err)
 	}
 
-	d.index = participant.Index
+	d.index = index
 
 	log.Infof("Registered as participant with index %d", d.index)
 	return nil
@@ -320,10 +317,10 @@ func (d *DistKeyGenerator) CollectParticipants() error {
 	}
 
 	for i := uint64(1); i <= uint64(len(pks)); i++ {
-		pub, err := BigToPoint(d.suite, pks[i-1])
-		if err != nil {
-			return fmt.Errorf("big to point: %w", err)
-		}
+		pk := pks[i-1]
+		pub := d.suite.Point().(*curve25519.ProjPoint)
+		pub.X.V = *pk[0]
+		pub.Y.V = *pk[1]
 
 		d.participants[i] = &Participant{index: i, pub: pub}
 	}
@@ -700,10 +697,10 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 
 	hashInput = append(hashInput, commitmentsHash[:]...)
 
-	pubProoferBin, _ := pubProofer.MarshalBinary()
-	pubDisputerBin, _ := pubDisputer.MarshalBinary()
-	hashInput = append(hashInput, pubProoferBin...)
-	hashInput = append(hashInput, pubDisputerBin...)
+	hashInput = append(hashInput, pubProoferX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubProoferY.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubDisputerX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubDisputerY.V.FillBytes(buf)...)
 
 	hashInput = append(hashInput, index.FillBytes(buf)...)
 
@@ -1022,7 +1019,7 @@ func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error
 }
 
 func TruncateHash(hash []byte) ([]byte) {
-	// Truncate the first 3 bits s.t. value range is limited to 254 bits (field size of BabyJubJub)
+	// Truncate the first 3 bits s.t. value range is limited to 253 bits (field size of BabyJubJub)
 	hash[0] &= 0b00011111
 
 	return hash

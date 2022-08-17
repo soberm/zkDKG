@@ -33,7 +33,30 @@ contract ZKDKG {
 
     struct Participant {
         uint64 index;
-        uint publicKey;
+
+        uint[2] publicKey;
+        /**
+         * The public key could be stored in compressed form, reducing the array to a single unsigned integer.
+         * For gas efficiency and code complexity reasons this is not done here.
+         *
+         * If the point were in compressed Twisted Edwards form, decompression would require submod, divmod and sqrt operations
+         * due to the need to compute x = sqrt((1 - y^2) / (1 - dy^2)).
+         * (x - y) mod p can be rewritten as (p - y) + x mod p and divmod is equivalent to the multiplication of the modular inverse
+         * (see https://github.com/witnet/elliptic-curve-solidity/blob/b6886bb08333ccf6883ac42827d62c1bfdb37d44/contracts/EllipticCurve.sol#L22).
+         * The "hack" to compute the square root of an integer without fractional exponents doesn't apply for the Baby Jubjub curve.
+         * It relies on the identity that sqrt(r) = r^(1/2) is congruent r^((p + 1) / 4) modulo p if p mod 4 = 3, where r and p are unsigned integers.
+         * The order p_B of the Baby Jubjub curve doesn't satisfy this condition, therefore a more sophisticated algorithm (like the Tonelli-Shanks algorithm)
+         * would have to be used.
+         *
+         * If the point were in compressed Weierstrass form, only a method for computing the square root would be additionally required.
+         * As seen before, due to the defining characteristics of the Baby Jubjub curve, this is not easily achievable.
+         * Also, an extra conversion would have to be made on the Zokrates side because it needs points of a Twisted Edwards curve for
+         * its computations.
+         *
+         * Therefore, the point is being passed in uncompressed form.
+         * To circumvent this overhead one could require participants to submit a proof to the register call or implement a square root algorithm.
+         * We consider both of these solutions to be too complex for the problem at hand.
+        **/
     }
 
     struct Dispute {
@@ -86,7 +109,7 @@ contract ZKDKG {
         phaseEnd = type(uint64).max;
     }
 
-    function register(uint publicKey) public payable {
+    function register(uint[2] calldata publicKey) public payable {
         require(msg.value == STAKE, "value too low");
 
         if (phase == Phase.REGISTER) {
@@ -139,7 +162,7 @@ contract ZKDKG {
 
         uint64 disputerIndex = participants[msg.sender].index;
 
-        // TODO Check that disputer public key is valid
+        require(isPublicKeyValid(), "sender's public key not on curve");
 
         uint shareIndex = disputerIndex;
 
@@ -173,13 +196,14 @@ contract ZKDKG {
         uint hash = truncateHash(keccak256(
             bytes.concat(
                 commitmentHashes[disputee],
-                bytes32(participants[disputee].publicKey),
-                bytes32(participants[disputer].publicKey),
+                bytes32(participants[disputee].publicKey[0]),
+                bytes32(participants[disputee].publicKey[1]),
+                bytes32(participants[disputer].publicKey[0]),
+                bytes32(participants[disputer].publicKey[1]),
                 bytes32(uint(dispute.disputerIndex)),
                 bytes32(dispute.share)
             )
         ));
-
 
         uint[2] memory input = [
             hash,
@@ -287,6 +311,36 @@ contract ZKDKG {
         }
     }
 
+    /// @dev Check whether point (x,y) is on the Twisted Edwards curve defined by a, d, and p.
+    /// @param x x coordinate
+    /// @param y y coordinate
+    /// @param a constant of curve
+    /// @param d constant of curve
+    /// @param p the modulus
+    /// @return true if (x,y) is on the curve, false otherwise
+    function isOnCurve(uint x, uint y, uint a, uint d, uint p) internal pure returns (bool) {
+        if (x >= p || y >= p) {
+            return false;
+        }
+
+        uint xx = mulmod(x, x, p);
+        uint yy = mulmod(y, y, p);
+
+        uint lhs = mulmod(a, xx, p);
+        lhs = addmod(lhs, yy, p);
+
+        uint rhs = 1 + mulmod(mulmod(d, xx, p), yy, p);
+
+        return lhs == rhs;
+    }
+
+    function isPublicKeyValid() internal view returns (bool) {
+        uint[2] memory pk = participants[msg.sender].publicKey;
+
+        // These are the Baby Jubjub curve parameters
+        return isOnCurve(pk[0], pk[1], 168700, 168696, 21888242871839275222246405745257275088548364400416034343698204186575808495617);
+    }
+
     function participantsCount() internal view returns (uint) {
         uint count = 0;
         for (uint i = 0; i < addresses.length; i++) {
@@ -307,8 +361,8 @@ contract ZKDKG {
         return dispute.disputeeIndex != 0;
     }
 
-    function publicKeys() external view returns (uint[] memory) {
-        uint[] memory results = new uint[](addresses.length);
+    function publicKeys() external view returns (uint[2][] memory) {
+        uint[2][] memory results = new uint[2][](addresses.length);
         for (uint i = 0; i < addresses.length; i++) {
             results[i] = participants[addresses[i]].publicKey;
         }

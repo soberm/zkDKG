@@ -1,6 +1,7 @@
 package dkg
 
 import (
+	"client/internal/pkg/group/curve25519"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,6 +23,12 @@ func HexToScalar(suite suites.Suite, hexScalar string) (kyber.Scalar, error) {
 		return nil, fmt.Errorf("unmarshal scalar binary: %w", err)
 	}
 	return s, nil
+}
+
+func PointToBigUncompressed(point kyber.Point) ([2]*big.Int) {
+	p := point.(*curve25519.ProjPoint)
+	x, y := p.GetXY()
+	return [2]*big.Int{&x.V, &y.V}
 }
 
 func PointToBig(point kyber.Point) (*big.Int, error) {
