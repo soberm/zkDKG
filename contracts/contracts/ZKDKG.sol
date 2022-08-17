@@ -26,6 +26,13 @@ contract ZKDKG {
     // Compressed encoding of the point at infinity (0, 1)
     uint private constant INFINITY = 1;
 
+    // Order of the underlying prime finite field of the used curve, Baby Jubjub
+    uint private constant FIELD_ORDER = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
+    // Parameters defining the Twisted Edwards curve
+    uint private constant FIELD_A = 168700;
+    uint private constant FIELD_D = 168696;
+
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
 
@@ -41,7 +48,7 @@ contract ZKDKG {
          *
          * If the point were in compressed Twisted Edwards form, decompression would require submod, divmod and sqrt operations
          * due to the need to compute x = sqrt((1 - y^2) / (1 - dy^2)).
-         * (x - y) mod p can be rewritten as (p - y) + x mod p and divmod is equivalent to the multiplication of the modular inverse
+         * submod(x, y, p) can be rewritten as addmod(p - (y % p), x, p) and divmod is equivalent to the multiplication of the modular inverse
          * (see https://github.com/witnet/elliptic-curve-solidity/blob/b6886bb08333ccf6883ac42827d62c1bfdb37d44/contracts/EllipticCurve.sol#L22).
          * The "hack" to compute the square root of an integer without fractional exponents doesn't apply for the Baby Jubjub curve.
          * It relies on the identity that sqrt(r) = r^(1/2) is congruent r^((p + 1) / 4) modulo p if p mod 4 = 3, where r and p are unsigned integers.
@@ -311,25 +318,22 @@ contract ZKDKG {
         }
     }
 
-    /// @dev Check whether point (x,y) is on the Twisted Edwards curve defined by a, d, and p.
+    /// @dev Check whether point (x,y) is on the Baby Jubjub curve.
     /// @param x x coordinate
     /// @param y y coordinate
-    /// @param a constant of curve
-    /// @param d constant of curve
-    /// @param p the modulus
     /// @return true if (x,y) is on the curve, false otherwise
-    function isOnCurve(uint x, uint y, uint a, uint d, uint p) internal pure returns (bool) {
-        if (x >= p || y >= p) {
+    function isOnCurve(uint x, uint y) internal pure returns (bool) {
+        if (x >= FIELD_ORDER || y >= FIELD_ORDER) {
             return false;
         }
 
-        uint xx = mulmod(x, x, p);
-        uint yy = mulmod(y, y, p);
+        uint xx = mulmod(x, x, FIELD_ORDER);
+        uint yy = mulmod(y, y, FIELD_ORDER);
 
-        uint lhs = mulmod(a, xx, p);
-        lhs = addmod(lhs, yy, p);
+        uint lhs = mulmod(FIELD_A, xx, FIELD_ORDER);
+        lhs = addmod(lhs, yy, FIELD_ORDER);
 
-        uint rhs = 1 + mulmod(mulmod(d, xx, p), yy, p);
+        uint rhs = 1 + mulmod(mulmod(FIELD_D, xx, FIELD_ORDER), yy, FIELD_ORDER);
 
         return lhs == rhs;
     }
@@ -338,7 +342,7 @@ contract ZKDKG {
         uint[2] memory pk = participants[msg.sender].publicKey;
 
         // These are the Baby Jubjub curve parameters
-        return isOnCurve(pk[0], pk[1], 168700, 168696, 21888242871839275222246405745257275088548364400416034343698204186575808495617);
+        return isOnCurve(pk[0], pk[1]);
     }
 
     function participantsCount() internal view returns (uint) {
