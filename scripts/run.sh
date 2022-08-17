@@ -87,6 +87,9 @@ main() {
                 flags=()
                 if (( i == 1 )); then # The 1st node emits invalid commitments
                     flags+=("--rogue" )
+                fi
+
+                if (( i == 1 || i == 2 )); then # Report container IDs of the containers running the zokrates commands
                     flags+=("--id-pipe=$containerPipe")
                 fi
 
