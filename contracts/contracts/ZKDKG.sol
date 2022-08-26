@@ -374,8 +374,8 @@ contract ZKDKG {
     }
 
     function truncateHash(bytes32 _hash) internal pure returns (uint) {
-        // Truncate the first 3 bits s.t. value range is limited to 253 bits (longest bit length that only contains BabyJubJub field values)
-        return uint(_hash & hex"1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+        // Truncate the hash s.t. its value range is limited to exactly all field elements
+        return uint(_hash) % FIELD_ORDER;
     }
 
     modifier registered() {
