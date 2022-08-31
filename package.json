@@ -1,14 +1,4 @@
 {
-  "name": "contracts",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.4",
     "@nomiclabs/hardhat-waffle": "^2.0.2",
@@ -17,6 +7,7 @@
     "ethers": "^5.5.4",
     "hardhat": "^2.9.3",
     "hardhat-abi-exporter": "^2.9.0",
-    "ts-node": "^10.8.1"
+    "ts-node": "^10.8.1",
+    "zx": "^7.0.8"
   }
 }

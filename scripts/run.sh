@@ -54,6 +54,7 @@ main() {
         ../scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
+        reports="$buildDir"/reports
         containerPipe="$buildDir"/container_pipe
         declare -a ethPrivs
 
@@ -107,10 +108,8 @@ main() {
         fi
 
         while read dockerId; do
-            collect_container_stats "$buildDir" $dockerId
+            collect_container_stats $dockerId
         done < "$containerPipe"
-
-        cd ../contracts/
 
         for pid in ${goPids[@]}; do
             wait $pid
@@ -119,7 +118,11 @@ main() {
         if ! $generateOnly; then
             kill $nodePid
             unset nodePid
+
+            cd ../scripts/; npx ts-node-esm ../scripts/extractGasCosts.ts "$log" > "$reports"/gas_costs.csv
         fi
+
+        cd ../contracts/
     done
 }
 
@@ -169,12 +172,11 @@ generate_config() {
 }
 
 collect_container_stats() {
-    local reports="$1"/reports
     local csv="$reports"/${containerCsvFiles[containerIndex++]}.csv
 
     mkdir -p "$reports"
     echo "time,memory_usage" > "$csv"
-    perl -ne "print if s/^cName=$2(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
+    perl -ne "print if s/^cName=$1(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
 }
 
 cleanup() {
