@@ -1019,6 +1019,7 @@ func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error
 }
 
 func (d *DistKeyGenerator) TruncateHash(hash []byte) ([]byte) {
+	p := &d.suite.(*curve25519.SuiteCurve25519).Param.P
 	// Truncate the hash s.t. its value range is limited to exactly all field elements
-	return mod.NewIntBytes(hash, &d.suite.(*curve25519.SuiteCurve25519).Param.P, mod.BigEndian).BigEndian(32, 32)
+	return new(big.Int).Mod(new(big.Int).SetBytes(hash), p).Bytes()
 }
