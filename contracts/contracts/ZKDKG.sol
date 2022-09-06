@@ -33,6 +33,8 @@ contract ZKDKG {
     uint private constant FIELD_A = 168700;
     uint private constant FIELD_D = 168696;
 
+    uint private noBroadcasts = 0;
+
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
 
@@ -111,6 +113,8 @@ contract ZKDKG {
         userThreshold = _userThreshold;
         periodLength = _periodLength;
 
+        firstCoefficients = new uint[](_noParticipants);
+
         // Avoid higher costs for the last participant that calls register
         phase = Phase.REGISTER;
         phaseEnd = type(uint64).max;
@@ -146,13 +150,15 @@ contract ZKDKG {
         require(shares.length == addresses.length - 1, "invalid number of shares");
         require(commitments.length == minimumThreshold, "invalid number of commitments");
 
-        firstCoefficients.push(commitments[0]);
+        uint64 index = participants[msg.sender].index;
+
+        firstCoefficients[index - 1] = commitments[0];
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
         shareHashes[msg.sender] = keccak256(abi.encodePacked(shares));
 
-        emit BroadcastSharesLog(msg.sender, participants[msg.sender].index);
+        emit BroadcastSharesLog(msg.sender, index);
 
-        if (firstCoefficients.length == noParticipants) {
+        if (++noBroadcasts == noParticipants) {
             phaseEnd = uint64(block.timestamp) + periodLength;
             phase = Phase.BROADCAST_DISPUTE;
 
@@ -278,6 +284,7 @@ contract ZKDKG {
 
         delete addresses;
         delete firstCoefficients;
+        delete noBroadcasts;
 
         phase = Phase.REGISTER;
 
@@ -341,7 +348,6 @@ contract ZKDKG {
     function isPublicKeyValid() internal view returns (bool) {
         uint[2] memory pk = participants[msg.sender].publicKey;
 
-        // These are the Baby Jubjub curve parameters
         return isOnCurve(pk[0], pk[1]);
     }
 
