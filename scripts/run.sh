@@ -78,38 +78,40 @@ main() {
         local goPids=()
         cd ../dkg/
 
+        mkdir -p "$reports"
+
         if $generateOnly; then
             generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
             goPids[0]=$!
         else
             mkdir -p "$buildDir"/nodes
 
+            go build -o ../build ./cmd/full_node
+
+            cd ../scripts/; npx ts-node ../scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$reports"/gas_costs.csv &
+
             for ((i = 1; i <= participants; i++)); do
                 flags=()
-                if (( i == 1 )); then # The 1st node emits invalid commitments
-                    flags+=("--rogue" )
+                if (( i == 2 )); then # The 2nd node should dispute the 1st node's broadcast
+                    flags+=("--dispute-valid" )
                 fi
 
-                if (( i == 1 || i == 2 )); then # Report container IDs of the containers running the zokrates commands
+                if (( i == 1 )); then # Report container IDs of the containers running the zokrates commands
                     flags+=("--id-pipe=$containerPipe")
-                fi
-
-                if (( i != 2 )); then # The 2nd node is the only node that should dispute the invalid broadcast
-                    flags+=("--ignore-invalid")
                 fi
 
                 if (( i != 1 && i != 2 )); then
                     flags+=("--broadcast-only")
                 fi
 
-                generate_config $i $participants | go run ./cmd/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
+                generate_config $i $participants | ../build/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
                 goPids[$i]=$!
+
+                if (( i == 1 || i == 2 )); then
+                    sleep 3 # Ensure that the first two started nodes really have the same index in the contract
+                fi
             done
         fi
-
-        while read dockerId; do
-            collect_container_stats $dockerId
-        done < "$containerPipe"
 
         for pid in ${goPids[@]}; do
             wait $pid
@@ -118,8 +120,6 @@ main() {
         if ! $generateOnly; then
             kill $nodePid
             unset nodePid
-
-            cd ../scripts/; npx ts-node-esm ../scripts/extractGasCosts.ts "$log" > "$reports"/gas_costs.csv
         fi
 
         cd ../contracts/
@@ -169,14 +169,6 @@ generate_config() {
         \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
         \"MountSource\":        \"$(readlink -e ../build/$2/zk)\"
     }"
-}
-
-collect_container_stats() {
-    local csv="$reports"/${containerCsvFiles[containerIndex++]}.csv
-
-    mkdir -p "$reports"
-    echo "time,memory_usage" > "$csv"
-    perl -ne "print if s/^cName=$1(?=.*timestamp=([[:digit:]]+))(?=.*memory_usage=([[:digit:]]+)).*/\1,\2/" "$buildRoot"/cadvisor.log >> "$csv"
 }
 
 cleanup() {

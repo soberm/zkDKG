@@ -19,7 +19,14 @@ task("deploy", "Deploy the ZKDKG contract(s)")
         console.log("ShareVerifier deployed to:", shareVerifier.address);
 
         const ZKDKG = await env.ethers.getContractFactory("ZKDKG");
-        const zkDKG = await ZKDKG.deploy(shareVerifier.address, keyVerifier.address, participants, Math.floor(2 / 3 * (participants + 1)), 30);
+
+        const zkDKG = await ZKDKG.deploy(
+            shareVerifier.address,
+            keyVerifier.address,
+            participants,
+            Math.floor(2 / 3 * (participants + 1)),
+            Math.max(20, participants * 2),
+        );
 
         await zkDKG.deployed();
 

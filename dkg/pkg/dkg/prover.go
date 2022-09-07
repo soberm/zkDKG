@@ -19,7 +19,6 @@ type ProofType string
 const (
 	EvalPolyProof ProofType = "poly_eval"
 	KeyDerivProof ProofType = "key_deriv"
-	EvalPolyInputProof ProofType = "poly_eval_input"
 
 	zokratesImage = "zokrates/zokrates"
 	mountTarget   = "/home/zokrates/build"
@@ -94,17 +93,6 @@ func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args [
 				msg = status.Error.Message
 			}
 			return fmt.Errorf("running container: %s", msg)
-		}
-	}
-
-	if p.pipe != nil {
-		json, err := p.dc.ContainerInspect(ctx, resp.ID)
-		if err != nil {
-			return fmt.Errorf("inspect container: %w", err)
-		}
-
-		if _, err = p.pipe.WriteString(json.Name[1:] + "\n"); err != nil {
-			return fmt.Errorf("write to pipe: %w", err)
 		}
 	}
 

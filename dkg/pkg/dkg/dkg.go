@@ -53,15 +53,14 @@ type DistKeyGenerator struct {
 	priPoly             *share.PriPoly
 	shares              map[uint64]kyber.Scalar
 	commitments         map[uint64][]kyber.Point
-	rogue			    bool
-	ignoreInvalid	    bool
+	disputeValid		bool
 	broadcastOnly		bool
 }
 
 var errAbortion error = errors.New("protocol aborted due to insufficient remaining participants")
 const bufferTimeInSecs uint64 = 2
 
-func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInvalid, broadcastOnly bool) (*DistKeyGenerator, error) {
+func NewDistributedKeyGenerator(config *Config, idPipe string, disputeValid, broadcastOnly bool) (*DistKeyGenerator, error) {
 
 	param := ParamBabyJubJub()
 	curve := &curve25519.ProjectiveCurve{}
@@ -132,8 +131,7 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, rogue, ignoreInva
 		participants:        make(map[uint64]*Participant),
 		shares:              make(map[uint64]kyber.Scalar),
 		commitments:         make(map[uint64][]kyber.Point),
-		rogue:  			 rogue,
-		ignoreInvalid:		 ignoreInvalid,
+		disputeValid:  		 disputeValid,
 		broadcastOnly:		 broadcastOnly,
 	}, nil
 
@@ -558,45 +556,48 @@ func (d *DistKeyGenerator) HandleBroadcastSharesLog(broadcastSharesLog *ZKDKGCon
 	dealerIndex := broadcastSharesLog.BroadcasterIndex
 	pubKeyDealer := d.participants[dealerIndex].pub
 
-	i := d.index
-	j := i
-	if i > dealerIndex {
-		j -= 1
-	}
-
-	fie := mod.NewInt(new(big.Int).SetBytes(shares[j - 1].Bytes()), &d.curveParams.P)
-
 	valid := true
-
 	var decryptedShare kyber.Scalar
-	commits, err := BigToPoints(d.suite, commitments)
-	if err != nil {
+	var commits []kyber.Point
+
+	if d.disputeValid && dealerIndex == 1 {
 		valid = false
-
-		log.Infof("Received invalid curve points from dealer %d", dealerIndex)
-		if !d.ignoreInvalid {
-			d.scheduleDispute(dealerIndex, shares, distributionEnd)
-		}
+		log.Info("Disputing broadcast of dealer 1 due to --dispute-valid flag")
+		d.scheduleDispute(dealerIndex, shares, distributionEnd)
 	} else {
-		sharedKey, err := d.PreSharedKey(d.long, pubKeyDealer, commits)
+		i := d.index
+		j := i
+		if i > dealerIndex {
+			j -= 1
+		}
+
+		fie := mod.NewInt(new(big.Int).SetBytes(shares[j - 1].Bytes()), &d.curveParams.P)
+		
+		commits, err = BigToPoints(d.suite, commitments)
 		if err != nil {
-			return fmt.Errorf("pre shared key: %w", err)
-		}
-
-		fi := &share.PriShare{
-			I: int(i) - 1,
-			V: d.suite.Scalar().Sub(fie, sharedKey),
-		}
-
-		pubPoly := share.NewPubPoly(d.suite, nil, commits)
-
-		if pubPoly.Check(fi) {
-			decryptedShare = fi.V
-		} else {
-			log.Infof("Received invalid share from dealer %d", dealerIndex)
 			valid = false
 
-			if !d.ignoreInvalid {
+			log.Infof("Received invalid curve points from dealer %d", dealerIndex)
+			d.scheduleDispute(dealerIndex, shares, distributionEnd)
+		} else {
+			sharedKey, err := d.PreSharedKey(d.long, pubKeyDealer, commits)
+			if err != nil {
+				return fmt.Errorf("pre shared key: %w", err)
+			}
+
+			fi := &share.PriShare{
+				I: int(i) - 1,
+				V: d.suite.Scalar().Sub(fie, sharedKey),
+			}
+
+			pubPoly := share.NewPubPoly(d.suite, nil, commits)
+
+			if pubPoly.Check(fi) {
+				decryptedShare = fi.V
+			} else {
+				log.Infof("Received invalid share from dealer %d", dealerIndex)
+				valid = false
+
 				d.scheduleDispute(dealerIndex, shares, distributionEnd)
 			}
 		}
@@ -753,8 +754,7 @@ func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
 		d.contract.WatchExclusion,
 		nil,
 		func(event *ZKDKGContractExclusion) error {
-			d.HandleExclusion(event.Index)
-			return nil
+			return d.HandleExclusion(event.Index)
 		},
 		false,
 	)
@@ -772,9 +772,18 @@ func (d *DistKeyGenerator) WatchAbortion(ctx context.Context) error {
 	)
 }
 
-func (d *DistKeyGenerator) HandleExclusion(index uint64) {
-	d.commitments[index][0] = d.suite.Point().Null()
+func (d *DistKeyGenerator) HandleExclusion(index uint64) error {
+	if d.index == index {
+		return errors.New("this node got excluded by the protocol")
+	}
+
+	log.Infof("Excluding node %d", index)
+	for i := range d.commitments[index] {
+		d.commitments[index][i] = d.suite.Point().Null()
+	}
 	d.shares[index] = d.suite.Scalar()
+
+	return nil
 }
 
 func (d *DistKeyGenerator) WatchPublicKeySubmissionLog(ctx context.Context, computedPk kyber.Point) error {
@@ -872,10 +881,6 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	pubPoly := d.priPoly.Commit(nil)
 
 	_, commits := pubPoly.Info()
-
-	if d.rogue {
-		commits[0].Neg(commits[0])
-	}
 
 	d.commitments[d.index] = commits
 	d.shares[d.index] = d.priPoly.Eval(int(d.index) - 1).V
