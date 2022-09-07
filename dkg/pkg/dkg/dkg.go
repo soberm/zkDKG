@@ -478,7 +478,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 		args = append(args, &coeffX.V, &coeffY.V)
 	}
 
-	hash := d.TruncateHash(crypto.Keccak256(firstCoefficients))
+	hash := TruncateHash(crypto.Keccak256(firstCoefficients))
 
 	args = append(args, new(big.Int).SetBytes(hash))
 
@@ -707,7 +707,7 @@ func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContrac
 
 	hashInput = append(hashInput, fiBig.FillBytes(buf)...)
 
-	hash := d.TruncateHash(crypto.Keccak256(hashInput))
+	hash := TruncateHash(crypto.Keccak256(hashInput))
 
 	args = append(args, new(big.Int).SetBytes(hash))
 
@@ -1023,8 +1023,7 @@ func (d *DistKeyGenerator) getTxInputs(txHash common.Hash) ([]interface{}, error
 	return inputs, nil
 }
 
-func (d *DistKeyGenerator) TruncateHash(hash []byte) ([]byte) {
-	p := &d.suite.(*curve25519.SuiteCurve25519).Param.P
+func TruncateHash(hash []byte) ([]byte) {
 	// Truncate the hash s.t. its value range is limited to exactly all field elements
-	return new(big.Int).Mod(new(big.Int).SetBytes(hash), p).Bytes()
+	return new(big.Int).Mod(new(big.Int).SetBytes(hash), &ParamBabyJubJub().P).Bytes()
 }

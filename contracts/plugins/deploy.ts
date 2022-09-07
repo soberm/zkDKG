@@ -25,7 +25,7 @@ task("deploy", "Deploy the ZKDKG contract(s)")
             keyVerifier.address,
             participants,
             Math.floor(2 / 3 * (participants + 1)),
-            Math.max(20, participants * 2),
+            Math.max(30, participants * 2),
         );
 
         await zkDKG.deployed();
