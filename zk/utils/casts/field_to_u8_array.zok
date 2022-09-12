@@ -1,0 +1,6 @@
+import "utils/pack/bool/unpack256";
+import "./bool_array_to_u8_array";
+
+def main(field f) -> u8[32] {
+    return bool_array_to_u8_array::<_,32>(unpack256(f));
+}

@@ -20,7 +20,7 @@ const (
 	EvalPolyProof ProofType = "poly_eval"
 	KeyDerivProof ProofType = "key_deriv"
 
-	zokratesImage = "zokrates/zokrates"
+	zokratesImage = "zokrates/zokrates:0.8.2"
 	mountTarget   = "/home/zokrates/build"
 )
 

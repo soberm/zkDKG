@@ -1,0 +1,16 @@
+import "./field_to_u8_array";
+
+def main<N, P>(field[N] input) -> u8[P] {
+    assert(P == 32 * N);
+
+    u8[P] mut res = [0; P];
+
+	for u32 i in 0..N {
+		u8[32] v = field_to_u8_array(input[i]);
+		for u32 j in 0..32 {
+			res[i * 32 + j] = v[j];
+		}
+	}
+
+	return res;
+}

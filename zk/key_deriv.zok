@@ -1,21 +1,21 @@
-import "./ecc/compressPoints" as compressPoints
-import "./utils/casts/commits_to_u64" as commits_to_u64
-import "./utils/casts/keccak_to_field" as keccak_to_field
+import "./ecc/compressPoints";
+import "./utils/casts/keccak_to_field";
 
-from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS
-import "ecc/edwardsAdd" as edwardsAdd
-import "hashes/keccak/256bit" as keccak256
+from "ecc/babyjubjubParams" import BABYJUBJUB_PARAMS;
+import "ecc/edwardsAdd";
+import "hashes/keccak/256bit" as keccak256;
 
 // const u32 PARTICIPANTS = (To be filled in by the build script)
-const u32 N = PARTICIPANTS
-const u32 N_TIMES_4 = N * 4
+const u32 N = PARTICIPANTS;
+const u32 N_TIMES_32 = N * 32;
 
-def main(private field[N][2] firstCoefficients, field hash) -> field[2]:
-    assert(hash == keccak_to_field(keccak256(compressPoints::<_,N_TIMES_4>(firstCoefficients))))
+def main(private field[N][2] firstCoefficients, field hash) -> field[2] {
+    assert(hash == keccak_to_field(keccak256(compressPoints::<_,N_TIMES_32>(firstCoefficients))));
 
-    field[2] key  = BABYJUBJUB_PARAMS.INFINITY
-    for u32 i in 0..N do
-        key = edwardsAdd(key, firstCoefficients[i], BABYJUBJUB_PARAMS)
-    endfor
+    field[2] mut key  = BABYJUBJUB_PARAMS.INFINITY;
+    for u32 i in 0..N {
+        key = edwardsAdd(key, firstCoefficients[i], BABYJUBJUB_PARAMS);
+    }
 
-    return key
+    return key;
+}

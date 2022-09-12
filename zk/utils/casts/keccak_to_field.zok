@@ -1,12 +1,13 @@
-import "./u64_array_to_bool_array" as u64_array_to_bool_array
+from "utils/casts" import cast;
 
-def main(u64[4] hash) -> field:
-    bool[256] bits = u64_array_to_bool_array(hash)
-    field hash_field = 0
+def main(u8[32] hash) -> field {
+    bool[256] bits = cast(hash);
+    field mut hash_field = 0;
 
-    for u32 i in 0..256 do
-        u32 exponent = 256 - i - 1
-        hash_field = hash_field + (bits[i] ? 2 ** exponent : 0)
-    endfor
+    for u32 i in 0..256 {
+        u32 exponent = 256 - i - 1;
+        hash_field = hash_field + (bits[i] ? 2 ** exponent : 0);
+    }
 
-    return hash_field
+    return hash_field;
+}

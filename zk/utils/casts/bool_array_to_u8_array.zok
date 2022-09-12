@@ -1,0 +1,15 @@
+from "utils/casts" import cast;
+
+// convert an array of bool to an array of u64
+// the sizes must match (one u64 for 64 bool) otherwise an error will happen
+def main<N, P>(bool[N] bits) -> u8[P] {
+	assert(N == 8 * P);
+
+	u8[P] mut res = [0; P];
+	
+	for u32 i in 0..P {
+		res[i] = cast(bits[8 * i..8 * (i + 1)]);
+	}
+
+	return res;
+}

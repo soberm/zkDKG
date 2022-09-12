@@ -1,14 +1,15 @@
-import "ecc/edwardsCompress" as edwardsCompress
-import "utils/casts/u64_from_bits" as u64_from_bits
+import "ecc/edwardsCompress";
+from "utils/casts" import cast;
 
-def main<N, P>(field[N][2] points) -> u64[P]:
-    assert(4 * N == P)
+def main<N, P>(field[N][2] points) -> u8[P] {
+    assert(32 * N == P);
 
-    u64[P] compressed = [0; P]
-    for u32 i in 0..N do
-        bool[256] point = edwardsCompress(points[i])
-        for u32 j in 0..4 do
-            compressed[i * 4 + j] = u64_from_bits(point[(64 * j)..(64 * (j + 1))])
-        endfor
-    endfor
-    return compressed
+    u8[P] mut compressed = [0; P];
+    for u32 i in 0..N {
+        bool[256] point = edwardsCompress(points[i]);
+        for u32 j in 0..32 {
+            compressed[i * 32 + j] = cast(point[(8 * j)..(8 * (j + 1))]);
+        }
+    }
+    return compressed;
+}
