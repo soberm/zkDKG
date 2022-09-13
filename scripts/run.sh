@@ -178,7 +178,7 @@ cleanup() {
 
     if [[ -n $cadvisorId ]]; then
         docker kill $cadvisorId > /dev/null
-    fi    
+    fi
 }
 
 usage() {

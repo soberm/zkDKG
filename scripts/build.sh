@@ -47,7 +47,7 @@ for name in ${!inputs[@]}; do
                 zokrates compile -i src/$name.gen -s build/abi.json -o build/out &&
                 zokrates setup -i build/out --proving-key-path build/proving.key --verification-key-path build/verification.key &&
                 zokrates export-verifier -i build/verification.key -o build/verifier.sol
-            "
+            " || { echo "docker run exited with exit code $?" >&2; exit 1; }
 
         # Compute checksum to indicate a successful build using the current source file
         sha1sum $generated > $checksumFile
