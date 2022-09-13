@@ -3,8 +3,6 @@
 cd "$(dirname $0)"/.. || exit 1
 
 generateOnly=false
-containerIndex=0
-containerCsvFiles=("poly_eval_witness" "poly_eval_proof" "key_deriv_witness" "key_deriv_proof")
 root="$(pwd)"
 
 declare cadvisorId
