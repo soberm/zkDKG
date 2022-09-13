@@ -67,7 +67,7 @@ import readline from "readline";
     console.log("method,avggascosts,memory_in_mb,time_in_s");
     
     for (const [method, costs] of map) {
-        const average = costs.reduce((p, c) => p + c, 0) / costs.length;
+        const average = Math.round(costs.reduce((p, c) => p + c, 0) / costs.length);
         let memory = 0;
         let time = 0n;
 
