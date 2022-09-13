@@ -3,9 +3,6 @@
 cd "$(dirname $0)"/.. || exit 1
 
 generateOnly=false
-start=3
-end=3
-stepSize=3
 containerIndex=0
 containerCsvFiles=("poly_eval_witness" "poly_eval_proof" "key_deriv_witness" "key_deriv_proof")
 root="$(pwd)"
@@ -48,7 +45,7 @@ main() {
 
     cd ./contracts/
 
-    for ((participants = start; participants <= end; participants++)) do
+    for participants in ${participantsSizes[@]}; do
         echo "Starting to measure runtime for $participants participants"
 
         ../scripts/build.sh $participants
@@ -124,7 +121,7 @@ main() {
 }
 
 parse_input() {
-    local args=$(getopt -a -n run -o g --long generate-only: -- "$@")
+    local args=$(getopt --name run --options g --longoptions generate-only -- "$@")
     if [[ $? != 0 ]]; then
         usage
     fi
@@ -138,18 +135,10 @@ parse_input() {
         esac
     done
 
-    local singleRegex="^[0-9]+$"
-    local rangeRegex="^\[([[:digit:]]+),([[:digit:]]+)(,([[:digit:]]+))?\]$"
+    local regex="^[0-9]+(,[0-9]+)*$"
 
-    if [[ $1 =~ $singleRegex ]]; then
-        start=$1
-        end=$1
-    elif [[ $1 =~ $rangeRegex ]]; then
-        start=${BASH_REMATCH[1]}
-        end=${BASH_REMATCH[1]}
-        if [[ -n ${BASH_REMATCH[4]} ]]; then
-            stepSize=${BASH_REMATCH[4]}
-        fi
+    if [[ $1 =~ $regex ]]; then
+        IFS=',' read -a participantsSizes <<< $1
     else
         usage
     fi
