@@ -230,7 +230,7 @@ contract ZKDKG {
     }
 
     function submitPublicKey(uint[2] calldata _publicKey, KeyVerifier.Proof calldata proof) external registered {
-        require(phase >= Phase.BROADCAST_DISPUTE, "not in submission phase");
+        require(phase == Phase.BROADCAST_DISPUTE, "not in submission phase");
         require(block.timestamp > phaseEnd, "dispute period still ongoing");
 
         checkExpiredDisputes();
