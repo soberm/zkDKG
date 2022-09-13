@@ -268,9 +268,7 @@ contract ZKDKG {
      * the dependence on the stored stake, i.e. it is not possible to distribute the reward s.t. [1] and [2] hold
      * for every stake.
      */
-    function payNodes() private {
-        reset();
-    }
+    function payNodes() private {}
 
     function reset() private {
         for (uint i = 0; i < addresses.length; i++) {
