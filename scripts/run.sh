@@ -54,7 +54,6 @@ main() {
         ../scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
-        reports="$buildDir"/reports
         containerPipe="$buildDir"/container_pipe
         declare -a ethPrivs
 
@@ -78,8 +77,6 @@ main() {
         local goPids=()
         cd ../dkg/
 
-        mkdir -p "$reports"
-
         if $generateOnly; then
             generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
             goPids[0]=$!
@@ -88,7 +85,7 @@ main() {
 
             go build -o ../build ./cmd/full_node
 
-            cd ../scripts/; npx ts-node ../scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$reports"/gas_costs.csv &
+            cd ../scripts/; npx ts-node ../scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$buildDir"/report.csv &
 
             for ((i = 1; i <= participants; i++)); do
                 flags=()
