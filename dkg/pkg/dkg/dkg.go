@@ -46,7 +46,7 @@ type DistKeyGenerator struct {
 	ethereumAddress  	common.Address
 	ethereumPrivateKey	*ecdsa.PrivateKey
 	long                kyber.Scalar
-	extendedPeriod		bool
+	periodChange		chan struct{}
 	pub                 kyber.Point
 	participants        map[uint64]*Participant
 	index               uint64
@@ -127,6 +127,7 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, disputeValid, bro
 		ethereumAddress:     ethereumPublicKey,
 		ethereumPrivateKey:  ethereumPrivateKey,
 		long:                long,
+		periodChange: 		 make(chan struct{}),
 		pub:                 suite.Point().Mul(long, nil),
 		participants:        make(map[uint64]*Participant),
 		shares:              make(map[uint64]kyber.Scalar),
@@ -397,15 +398,16 @@ func (d *DistKeyGenerator) DisputeSharePeriodEnd() <-chan struct{} {
 	go func() {
 		timer := time.NewTimer(d.durationUntilPhaseEnd())
 
+		loop:
 		for {
-			<-timer.C
-			if !d.extendedPeriod {
-				break
+			select {
+			case <-d.periodChange:
+				timer.Reset(d.durationUntilPhaseEnd())
+			case <-timer.C:
+				break loop
 			}
-
-			d.extendedPeriod = false
-			timer.Reset(d.durationUntilPhaseEnd())
 		}
+
 		close(end)
 	}()
 
@@ -647,7 +649,10 @@ func (d *DistKeyGenerator) WatchDisputeShareLog(ctx context.Context) error {
 func (d *DistKeyGenerator) HandleDisputeShareLog(disputeShareEvent *ZKDKGContractDisputeShare) error {
 	log.Infof("Received dispute for dealer %d", disputeShareEvent.DisputeeIndex)
 
-	d.extendedPeriod = true
+	select {
+	case d.periodChange <- struct{}{}:
+	default:
+	}
 
 	if d.index != disputeShareEvent.DisputeeIndex {
 		return nil
@@ -754,7 +759,14 @@ func (d *DistKeyGenerator) WatchExclusion(ctx context.Context) error {
 		d.contract.WatchExclusion,
 		nil,
 		func(event *ZKDKGContractExclusion) error {
-			return d.HandleExclusion(event.Index)
+			err := d.HandleExclusion(event.Index)
+
+			select {
+			case d.periodChange <- struct{}{}:
+			default:
+			}
+
+			return err
 		},
 		false,
 	)

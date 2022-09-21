@@ -33,6 +33,11 @@ contract ZKDKG {
     uint private constant FIELD_A = 168700;
     uint private constant FIELD_D = 168696;
 
+    // Used for setting expiries to a far distant point in time
+    uint64 private constant POINT_IN_FUTURE = 7258118400;
+
+    bool private immutable isEvaluation;
+
     uint private noBroadcasts = 0;
 
     ShareVerifier private shareVerifier;
@@ -112,6 +117,7 @@ contract ZKDKG {
         minimumThreshold = _minimumThreshold;
         userThreshold = _userThreshold;
         periodLength = _periodLength;
+        isEvaluation = _periodLength == 0;
 
         firstCoefficients = new uint[](_noParticipants);
 
@@ -136,7 +142,7 @@ contract ZKDKG {
         participants[msg.sender] = Participant(uint64(addresses.length), publicKey);
 
         if (addresses.length == noParticipants) {
-            phaseEnd = uint64(block.timestamp) + periodLength;
+            phaseEnd = isEvaluation ? POINT_IN_FUTURE : uint64(block.timestamp) + periodLength;
             phase = Phase.BROADCAST_SUBMIT;
 
             emit RegistrationEndLog();
@@ -159,7 +165,7 @@ contract ZKDKG {
         emit BroadcastSharesLog(msg.sender, index);
 
         if (++noBroadcasts == noParticipants) {
-            phaseEnd = uint64(block.timestamp) + periodLength;
+            phaseEnd = isEvaluation ? POINT_IN_FUTURE : uint64(block.timestamp) + periodLength;
             phase = Phase.BROADCAST_DISPUTE;
 
             emit DistributionEndLog();
@@ -185,7 +191,7 @@ contract ZKDKG {
         }
         shareIndex--; // Participant indices are one-based
 
-        phaseEnd = uint64(block.timestamp) + periodLength;
+        phaseEnd = isEvaluation ? POINT_IN_FUTURE : uint64(block.timestamp) + periodLength;
 
         disputes[disputeeAddr] = Dispute(
             disputerIndex,
@@ -224,6 +230,11 @@ contract ZKDKG {
         ];
 
         require(shareVerifier.verifyTx(proof, input), "invalid proof");
+
+        // For the purpose of the evaluation script, end the dispute / defend phase once one share has been successfully defended
+        if (isEvaluation) {
+            phaseEnd = uint64(block.timestamp);
+        }
 
         delete disputes[msg.sender];
         excludeNode(dispute.disputerIndex);
