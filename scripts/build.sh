@@ -44,7 +44,7 @@ for name in ${!inputs[@]}; do
     else
         docker run --mount type=bind,source="$rootDir"/zk,target=/home/zokrates/src --mount type=bind,source="$buildDir",target=/home/zokrates/build \
             zokrates/zokrates:$zokratesTag /bin/bash -c "
-                zokrates compile -i src/$name.gen -s build/abi.json -o build/out &&
+                zokrates compile -i src/$name.gen -s build/abi.json -o build/out -r /dev/null &&
                 zokrates setup -i build/out --proving-key-path build/proving.key --verification-key-path build/verification.key &&
                 zokrates export-verifier -i build/verification.key -o build/verifier.sol
             " || { echo "docker run exited with exit code $?" >&2; exit 1; }
