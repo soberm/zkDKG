@@ -44,77 +44,85 @@ main() {
     cd ./contracts/
 
     for participants in ${participantsSizes[@]}; do
-        echo "Starting to measure runtime for $participants participants"
 
         ../scripts/build.sh $participants
 
-        buildDir="$buildRoot"/$participants
-        containerPipe="$buildDir"/container_pipe
-        declare -a ethPrivs
+        for ((repetition = 1; repetition <= repetitions; repetition++)); do
+            echo "Starting to measure runtime for run no. $repetition for $participants participants"
 
-        if ! $generateOnly; then
-            log="$buildDir"/hardhat.log
-            NODE_PATH=./node_modules npx hardhat launch $participants > "$log" &
-            nodePid=$!
+            buildDir="$buildRoot"/$participants
+            reports="$buildDir"/reports
+            containerPipe="$buildDir"/container_pipe
+            declare -a ethPrivs
 
-            # Retrieve the private keys for the accounts from the log of the Hardhat node
-            ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
+            if ! $generateOnly; then
+                log="$buildDir"/hardhat.log
+                NODE_PATH=./node_modules npx hardhat launch $participants > "$log" &
+                nodePid=$!
 
-            npx hardhat --network localhost deploy $participants
-        fi
+                # Retrieve the private keys for the accounts from the log of the Hardhat node
+                ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
 
-        if [[ ! -p $containerPipe ]]; then
-            rm -f "$containerPipe"
-            mkfifo "$containerPipe"
-        fi
-        containerPipe=$(readlink -e "$containerPipe")
+                npx hardhat --network localhost deploy $participants
+            fi
 
-        local goPids=()
-        cd ../dkg/
+            if [[ ! -p $containerPipe ]]; then
+                rm -f "$containerPipe"
+                mkfifo "$containerPipe"
+            fi
+            containerPipe=$(readlink -e "$containerPipe")
 
-        if $generateOnly; then
-            generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
-            goPids[0]=$!
-        else
-            mkdir -p "$buildDir"/nodes
+            local goPids=()
+            cd ../dkg/
 
-            go build -o ../build ./cmd/full_node
+            if $generateOnly; then
+                generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
+                goPids[0]=$!
+            else
+                mkdir -p "$buildDir"/nodes
 
-            cd ../scripts/; npx ts-node ../scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$buildDir"/report.csv &
+                go build -o ../build ./cmd/full_node
 
-            for ((i = 1; i <= participants; i++)); do
-                flags=()
-                if (( i == 2 )); then # The 2nd node should dispute the 1st node's broadcast
-                    flags+=("--dispute-valid" )
-                fi
+                mkdir -p "$reports"
+                cd ../scripts/
+                npx ts-node extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$reports/report_$repetition.csv" &
+                scriptPid=$!
 
-                if (( i == 1 )); then # Report container IDs of the containers running the zokrates commands
-                    flags+=("--id-pipe=$containerPipe")
-                fi
+                for ((i = 1; i <= participants; i++)); do
+                    flags=()
+                    if (( i == 2 )); then # The 2nd node should dispute the 1st node's broadcast
+                        flags+=("--dispute-valid" )
+                    fi
 
-                if (( i != 1 && i != 2 )); then
-                    flags+=("--broadcast-only")
-                fi
+                    if (( i == 1 )); then # Report container IDs of the containers running the zokrates commands
+                        flags+=("--id-pipe=$containerPipe")
+                    fi
 
-                generate_config $i $participants | ../build/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
-                goPids[$i]=$!
+                    if (( i != 1 && i != 2 )); then
+                        flags+=("--broadcast-only")
+                    fi
 
-                if (( i == 1 || i == 2 )); then
-                    sleep 3 # Ensure that the first two started nodes really have the same index in the contract
-                fi
+                    generate_config $i $participants | ../build/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
+                    goPids[$i]=$!
+
+                    if (( i == 1 || i == 2 )); then
+                        sleep 3 # Ensure that the first two started nodes really have the same index in the contract
+                    fi
+                done
+            fi
+
+            for pid in ${goPids[@]}; do
+                wait $pid
             done
-        fi
 
-        for pid in ${goPids[@]}; do
-            wait $pid
+            if ! $generateOnly; then
+                kill $nodePid
+                wait $scriptPid
+                unset nodePid scriptPid
+            fi
+
+            cd ../contracts/
         done
-
-        if ! $generateOnly; then
-            kill $nodePid
-            unset nodePid
-        fi
-
-        cd ../contracts/
     done
 }
 
@@ -137,6 +145,14 @@ parse_input() {
 
     if [[ $1 =~ $regex ]]; then
         IFS=',' read -a participantsSizes <<< $1
+    else
+        usage
+    fi
+
+    if [[ $2 =~ [0-9]+ ]]; then
+        repetitions=$2
+    elif [[ -z $2 ]]; then
+        repetitions=1
     else
         usage
     fi
@@ -166,7 +182,7 @@ cleanup() {
 }
 
 usage() {
-    echo "Usage: run [ -g | --generate-only ] participant-range"
+    echo "Usage: run [ -g | --generate-only ] participant-range [ repetitions ]"
     exit 2
 }
 
