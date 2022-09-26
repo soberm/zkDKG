@@ -50,7 +50,6 @@ main() {
         ./scripts/build.sh $participants
 
         buildDir="$buildRoot"/$participants
-        reports="$buildDir"/reports
         containerPipe="$buildDir"/container_pipe
         declare -a ethPrivs
 
@@ -62,9 +61,9 @@ main() {
         if ! $generateOnly; then
             log="$buildDir"/hardhat.log
 
-            mkdir -p "$buildDir"/nodes "$reports"
+            mkdir -p "$buildDir"/nodes
 
-            npx ts-node ./scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" $repetitions > "$reports"/report.csv &
+            npx ts-node ./scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" $repetitions > "$buildDir"/report.csv &
             scriptPid=$!
         fi
 
