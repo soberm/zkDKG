@@ -20,6 +20,10 @@ main() {
 
     mkdir -p "$buildRoot"
 
+    if ! $generateOnly; then
+        (cd ./dkg/; go build -o "$buildRoot" ./cmd/full_node)
+    fi
+
     docker run \
     --volume=/:/rootfs:ro \
     --volume=/var/run:/var/run:rw \
@@ -41,23 +45,34 @@ main() {
     cadvisorId=$(<"$cidFile")
     rm "$cidFile"
 
-    cd ./contracts/
-
     for participants in ${participantsSizes[@]}; do
 
-        ../scripts/build.sh $participants
+        ./scripts/build.sh $participants
+
+        buildDir="$buildRoot"/$participants
+        reports="$buildDir"/reports
+        containerPipe="$buildDir"/container_pipe
+        declare -a ethPrivs
+
+        if [[ ! -p $containerPipe ]]; then
+            rm -f "$containerPipe"
+            mkfifo "$containerPipe"
+        fi
+
+        if ! $generateOnly; then
+            log="$buildDir"/hardhat.log
+
+            mkdir -p "$buildDir"/nodes "$reports"
+
+            npx ts-node ./scripts/extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" $repetitions > "$reports"/report.csv &
+            scriptPid=$!
+        fi
 
         for ((repetition = 1; repetition <= repetitions; repetition++)); do
             echo "Starting to measure runtime for run no. $repetition for $participants participants"
 
-            buildDir="$buildRoot"/$participants
-            reports="$buildDir"/reports
-            containerPipe="$buildDir"/container_pipe
-            declare -a ethPrivs
-
             if ! $generateOnly; then
-                log="$buildDir"/hardhat.log
-                NODE_PATH=./node_modules npx hardhat launch $participants > "$log" &
+                npx hardhat launch $participants > "$log" &
                 nodePid=$!
 
                 # Retrieve the private keys for the accounts from the log of the Hardhat node
@@ -66,28 +81,12 @@ main() {
                 npx hardhat --network localhost deploy $participants
             fi
 
-            if [[ ! -p $containerPipe ]]; then
-                rm -f "$containerPipe"
-                mkfifo "$containerPipe"
-            fi
-            containerPipe=$(readlink -e "$containerPipe")
-
             local goPids=()
-            cd ../dkg/
 
             if $generateOnly; then
-                generate_config 1 $participants | go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
+                generate_config 1 $participants | go run ./dkg/cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
                 goPids[0]=$!
             else
-                mkdir -p "$buildDir"/nodes
-
-                go build -o ../build ./cmd/full_node
-
-                mkdir -p "$reports"
-                cd ../scripts/
-                npx ts-node extractGasCosts.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" > "$reports/report_$repetition.csv" &
-                scriptPid=$!
-
                 for ((i = 1; i <= participants; i++)); do
                     flags=()
                     if (( i == 2 )); then # The 2nd node should dispute the 1st node's broadcast
@@ -102,7 +101,7 @@ main() {
                         flags+=("--broadcast-only")
                     fi
 
-                    generate_config $i $participants | ../build/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
+                    generate_config $i $participants | ./build/full_node -c /dev/stdin ${flags[@]} |& tee "$buildDir"/nodes/node_$i.log &
                     goPids[$i]=$!
 
                     if (( i == 1 || i == 2 )); then
@@ -117,12 +116,14 @@ main() {
 
             if ! $generateOnly; then
                 kill $nodePid
-                wait $scriptPid
-                unset nodePid scriptPid
+                unset nodePid
             fi
-
-            cd ../contracts/
         done
+
+        if ! $generateOnly; then
+            wait $scriptPid
+            unset scriptPid
+        fi
     done
 }
 
@@ -167,7 +168,7 @@ generate_config() {
         \"EthereumPrivateKey\": \"${ethPrivs[$1 - 1]}\",
         \"DkgPrivateKey\":      \"$dkgPriv\",
         \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
-        \"MountSource\":        \"$(readlink -e ../build/$2/zk)\"
+        \"MountSource\":        \"$(readlink -e ./build/$2/zk)\"
     }"
 }
 

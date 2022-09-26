@@ -1,7 +1,7 @@
 import "hardhat-abi-exporter";
-import "./plugins/abigen-exporter";
-import "./plugins/deploy";
-import "./plugins/launcher";
+import "./contracts/plugins/abigen-exporter";
+import "./contracts/plugins/deploy";
+import "./contracts/plugins/launcher";
 
 import type {HardhatUserConfig} from "hardhat/config";
 
