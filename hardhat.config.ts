@@ -6,6 +6,9 @@ import "./contracts/plugins/launcher";
 import type {HardhatUserConfig} from "hardhat/config";
 
 const config: HardhatUserConfig = {
+  paths: {
+    root: "./contracts/",
+  },
   abiExporter: {
     runOnCompile: true,
     flat: true,
