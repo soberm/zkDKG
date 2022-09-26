@@ -6,5 +6,5 @@
       "strict": true,
       "esModuleInterop": true,
     },
-    "files": ["extractGasCosts.ts"],
+    "files": ["collectStats.ts"],
 }
