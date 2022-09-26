@@ -8,9 +8,9 @@ import "./KeyVerifier.sol";
 contract ZKDKG {
     uint public constant STAKE = 0 ether;
 
-    uint public immutable noParticipants;
-    uint public immutable minimumThreshold;
-    uint public immutable userThreshold;
+    uint16 public immutable noParticipants;
+    uint16 public immutable minimumThreshold;
+    uint16 public immutable userThreshold;
     uint16 public immutable periodLength;
 
     Phase public phase;
@@ -38,15 +38,16 @@ contract ZKDKG {
 
     bool private immutable isEvaluation;
 
-    uint private noBroadcasts = 0;
+    uint16 private noBroadcasts = 0;
 
     ShareVerifier private shareVerifier;
     KeyVerifier private keyVerifier;
 
     mapping(address => Dispute) private disputes;
+    address[] private disputed;
 
     struct Participant {
-        uint64 index;
+        uint16 index;
 
         uint[2] publicKey;
         /**
@@ -74,8 +75,8 @@ contract ZKDKG {
     }
 
     struct Dispute {
-        uint64 disputerIndex;
-        uint64 disputeeIndex;
+        uint16 disputerIndex;
+        uint16 disputeeIndex;
         uint64 end;
         uint share;
     }
@@ -87,23 +88,23 @@ contract ZKDKG {
         BROADCAST_DISPUTE
     }
 
-    event DisputeShare(uint64 disputerIndex, uint64 disputeeIndex);
-    event BroadcastSharesLog(address sender, uint64 broadcasterIndex);
+    event DisputeShare(uint16 disputerIndex, uint16 disputeeIndex);
+    event BroadcastSharesLog(address sender, uint16 broadcasterIndex);
     event RegistrationEndLog();
     event DistributionEndLog();
     event PublicKeySubmission();
     event Abortion();
     event Reset();
-    event Exclusion(uint64 index);
+    event Exclusion(uint16 index);
 
     constructor(
         address _shareVerifier,
         address _keyVerifier,
-        uint _noParticipants,
-        uint _userThreshold,
+        uint16 _noParticipants,
+        uint16 _userThreshold,
         uint16 _periodLength
     ) {
-        uint _minimumThreshold = (_noParticipants + 1) / 2;
+        uint16 _minimumThreshold = (_noParticipants + 1) / 2;
 
         require(
             _userThreshold >= _minimumThreshold && _userThreshold <= _noParticipants,
@@ -139,7 +140,7 @@ contract ZKDKG {
         }
 
         addresses.push(msg.sender);
-        participants[msg.sender] = Participant(uint64(addresses.length), publicKey);
+        participants[msg.sender] = Participant(uint16(addresses.length), publicKey);
 
         if (addresses.length == noParticipants) {
             phaseEnd = isEvaluation ? POINT_IN_FUTURE : uint64(block.timestamp) + periodLength;
@@ -156,7 +157,7 @@ contract ZKDKG {
         require(shares.length == addresses.length - 1, "invalid number of shares");
         require(commitments.length == minimumThreshold, "invalid number of commitments");
 
-        uint64 index = participants[msg.sender].index;
+        uint16 index = participants[msg.sender].index;
 
         firstCoefficients[index - 1] = commitments[0];
         commitmentHashes[msg.sender] = keccak256(abi.encodePacked(commitments));
@@ -172,14 +173,14 @@ contract ZKDKG {
         }
     }
 
-    function disputeShare(uint64 disputeeIndex, uint[] calldata shares) external registered {
+    function disputeShare(uint16 disputeeIndex, uint[] calldata shares) external registered {
         address disputeeAddr = addresses[disputeeIndex - 1];
         
         require(phase == Phase.BROADCAST_DISPUTE && block.timestamp <= phaseEnd, "not in dispute period");
         require(!isDisputed(disputes[disputeeAddr]), "disputee already disputed");
         require(shareHashes[disputeeAddr] == keccak256(abi.encodePacked(shares)), "invalid shares");
 
-        uint64 disputerIndex = participants[msg.sender].index;
+        uint16 disputerIndex = participants[msg.sender].index;
 
         require(isPublicKeyValid(), "sender's public key not on curve");
 
@@ -199,6 +200,8 @@ contract ZKDKG {
             phaseEnd,
             shares[shareIndex]
         );
+
+        disputed.push(disputeeAddr);
         
         emit DisputeShare(disputerIndex, disputeeIndex);
     }
@@ -206,7 +209,7 @@ contract ZKDKG {
     function defendShare(ShareVerifier.Proof calldata proof) external registered {
         Dispute memory dispute = disputes[msg.sender];
 
-        require(isDisputed(disputes[msg.sender]), "not being disputed");
+        require(isDisputed(dispute), "not being disputed");
         require(block.timestamp <= dispute.end, "defense period expired");
 
         address disputee = addresses[dispute.disputeeIndex - 1];
@@ -237,14 +240,21 @@ contract ZKDKG {
         }
 
         delete disputes[msg.sender];
+
+        uint index = findDisputeIndex(msg.sender);
+        if (index != disputed.length - 1) {
+            disputed[index] = disputed[disputed.length - 1];
+        }
+        disputed.pop();
+
         excludeNode(dispute.disputerIndex);
     }
 
-    function submitPublicKey(uint[2] calldata _publicKey, KeyVerifier.Proof calldata proof) external registered {
+    function submitPublicKey(uint[2] calldata _publicKey, KeyVerifier.Proof calldata proof) external {
         require(phase == Phase.BROADCAST_DISPUTE, "not in submission phase");
         require(block.timestamp > phaseEnd, "dispute period still ongoing");
 
-        checkExpiredDisputes();
+        removeExpiredDisputes();
 
         uint hash = truncateHash(keccak256(abi.encodePacked(firstCoefficients)));
 
@@ -292,6 +302,7 @@ contract ZKDKG {
         }
 
         delete addresses;
+        delete disputed;
         delete firstCoefficients;
         delete noBroadcasts;
 
@@ -300,37 +311,28 @@ contract ZKDKG {
         emit Reset();
     }
 
-    function excludeNode(uint64 disputerIndex) internal {
-        firstCoefficients[disputerIndex - 1] = INFINITY;
-        delete participants[addresses[disputerIndex - 1]];
+    function excludeNode(uint16 index) internal {
+        firstCoefficients[index - 1] = INFINITY;
+        delete participants[addresses[index - 1]];
 
-        emit Exclusion(disputerIndex);
+        emit Exclusion(index);
 
         if (participantsCount() < userThreshold) {
             emit Abortion();
         }
     }
 
-    function expiredDisputes(uint timestamp) public view returns (bool[] memory) {
-        bool[] memory indices = new bool[](addresses.length);
-        for (uint64 i = 0; i < indices.length; i++) {
-            address addr = addresses[i];
-            Dispute memory dispute = disputes[addr];
-
-            if (isDisputed(dispute) && dispute.end <= timestamp) {
-                indices[i] = true;
-            }
+    function expiredDisputes() external view returns (uint16[] memory) {
+        uint16[] memory indices = new uint16[](disputed.length);
+        for (uint16 i = 0; i < disputed.length; i++) {
+            indices[i] = participants[disputed[i]].index;
         }
         return indices;
     }
 
-    function checkExpiredDisputes() internal {
-        bool[] memory indices = expiredDisputes(block.timestamp);
-
-        for (uint64 i = 0; i < indices.length; i++) {
-            if (indices[i]) {
-                excludeNode(i + 1);
-            }
+    function removeExpiredDisputes() internal {
+        for (uint16 i = 0; i < disputed.length; i++) {
+            excludeNode(participants[disputed[i]].index);
         }
     }
 
@@ -391,6 +393,15 @@ contract ZKDKG {
     function truncateHash(bytes32 _hash) internal pure returns (uint) {
         // Truncate the hash s.t. its value range is limited to exactly all field elements
         return uint(_hash) % FIELD_ORDER;
+    }
+
+    function findDisputeIndex(address addr) internal view returns (uint) {
+        for (uint i = 0; i < disputed.length; i++) {
+            if (disputed[i] == addr) {
+                return i;
+            }
+        }
+        return disputed.length;
     }
 
     modifier registered() {

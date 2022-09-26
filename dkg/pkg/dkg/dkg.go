@@ -29,7 +29,7 @@ import (
 )
 
 type Participant struct {
-	index uint64
+	index uint16
 	pub   kyber.Point
 }
 
@@ -48,11 +48,11 @@ type DistKeyGenerator struct {
 	long                kyber.Scalar
 	periodChange		chan struct{}
 	pub                 kyber.Point
-	participants        map[uint64]*Participant
-	index               uint64
+	participants        map[uint16]*Participant
+	index               uint16
 	priPoly             *share.PriPoly
-	shares              map[uint64]kyber.Scalar
-	commitments         map[uint64][]kyber.Point
+	shares              map[uint16]kyber.Scalar
+	commitments         map[uint16][]kyber.Point
 	disputeValid		bool
 	broadcastOnly		bool
 }
@@ -129,9 +129,9 @@ func NewDistributedKeyGenerator(config *Config, idPipe string, disputeValid, bro
 		long:                long,
 		periodChange: 		 make(chan struct{}),
 		pub:                 suite.Point().Mul(long, nil),
-		participants:        make(map[uint64]*Participant),
-		shares:              make(map[uint64]kyber.Scalar),
-		commitments:         make(map[uint64][]kyber.Point),
+		participants:        make(map[uint16]*Participant),
+		shares:              make(map[uint16]kyber.Scalar),
+		commitments:         make(map[uint16][]kyber.Point),
 		disputeValid:  		 disputeValid,
 		broadcastOnly:		 broadcastOnly,
 	}, nil
@@ -315,7 +315,7 @@ func (d *DistKeyGenerator) CollectParticipants() error {
 		return fmt.Errorf("collect public keys: %w", err)
 	}
 
-	for i := uint64(1); i <= uint64(len(pks)); i++ {
+	for i := uint16(1); i <= uint16(len(pks)); i++ {
 		pk := pks[i-1]
 		pub := d.suite.Point().(*curve25519.ProjPoint)
 		pub.X.V = *pk[0]
@@ -445,15 +445,13 @@ func (d *DistKeyGenerator) ComputePublicKey() (kyber.Point, error) {
 }
 
 func (d *DistKeyGenerator) checkExpiredDisputes() error {
-	indices, err := d.contract.ExpiredDisputes(nil, big.NewInt(time.Now().Unix()))
+	indices, err := d.contract.ExpiredDisputes(nil)
 	if err != nil {
 		return fmt.Errorf("contract call: %w", err)
 	}
 
-	for i, expired := range indices {
-		if expired {
-			d.HandleExclusion(uint64(i + 1))
-		}
+	for _, index := range indices {
+		d.HandleExclusion(index)
 	}
 
 	return nil
@@ -465,7 +463,7 @@ func (d *DistKeyGenerator) SubmitPublicKey(pub kyber.Point) error {
 	args := make([]*big.Int, 0)
 
 	firstCoefficients := make([]byte, 0)
-	for i := uint64(1); i <= uint64(len(d.participants)); i++ {
+	for i := uint16(1); i <= uint16(len(d.participants)); i++ {
 		firstCoefficient := d.commitments[i][0]
 
 		coeffProj, _ := firstCoefficient.(*curve25519.ProjPoint)
@@ -784,7 +782,7 @@ func (d *DistKeyGenerator) WatchAbortion(ctx context.Context) error {
 	)
 }
 
-func (d *DistKeyGenerator) HandleExclusion(index uint64) error {
+func (d *DistKeyGenerator) HandleExclusion(index uint16) error {
 	if d.index == index {
 		return errors.New("this node got excluded by the protocol")
 	}
@@ -829,7 +827,7 @@ func (d *DistKeyGenerator) HandlePublicKeySubmissionLog(ctx context.Context, com
 	return nil
 }
 
-func (d *DistKeyGenerator) DisputeShare(disputeeIndex uint64, shares []*big.Int) error {
+func (d *DistKeyGenerator) DisputeShare(disputeeIndex uint16, shares []*big.Int) error {
 	opts, err := bind.NewKeyedTransactorWithChainID(d.ethereumPrivateKey, d.chainID)
 	if err != nil {
 		return fmt.Errorf("keyed transactor with chainID: %w", err)
@@ -889,7 +887,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	log.Info("Generating commitments and shares...")
 
 	secret := d.suite.Scalar().Pick(d.suite.RandomStream())
-	d.priPoly = share.NewPriPoly(d.suite, int(threshold.Int64()), secret, d.suite.RandomStream())
+	d.priPoly = share.NewPriPoly(d.suite, int(threshold), secret, d.suite.RandomStream())
 	pubPoly := d.priPoly.Commit(nil)
 
 	_, commits := pubPoly.Info()
@@ -903,7 +901,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	}
 
 	shares := make([]*big.Int, 0)
-	for i := uint64(1); i <= uint64(len(d.participants)); i++ {
+	for i := uint16(1); i <= uint16(len(d.participants)); i++ {
 		if i == d.index {
 			continue
 		}
@@ -952,7 +950,7 @@ func (d *DistKeyGenerator) DistributeShares() error {
 	return nil
 }
 
-func (d *DistKeyGenerator) EncryptedPrivateShare(i uint64, commits []kyber.Point) (*share.PriShare, error) {
+func (d *DistKeyGenerator) EncryptedPrivateShare(i uint16, commits []kyber.Point) (*share.PriShare, error) {
 	priShare := d.priPoly.Eval(int(i) - 1)
 
 	sharedKey, err := d.PreSharedKey(d.long, d.participants[i].pub, commits)
@@ -996,7 +994,7 @@ func (d *DistKeyGenerator) estimateGas(ctx context.Context, fn string, args ...i
 	})
 }
 
-func (d *DistKeyGenerator) scheduleDispute(dealerIndex uint64, shares []*big.Int, distributionEnd <-chan struct{}) {
+func (d *DistKeyGenerator) scheduleDispute(dealerIndex uint16, shares []*big.Int, distributionEnd <-chan struct{}) {
 	log.Infof("Starting dispute against dealer %d after distribution end", dealerIndex)
 
 	go func() {
