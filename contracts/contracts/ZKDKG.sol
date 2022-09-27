@@ -12,13 +12,13 @@ contract ZKDKG {
     uint16 public immutable minimumThreshold;
     uint16 public immutable userThreshold;
     uint16 public immutable periodLength;
-    uint16 public remainingParticipants;
 
     Phase public phase;
     uint64 public phaseEnd;
 
     mapping(address => Participant) public participants;
     address[] public addresses;
+    address[] private disqualified;
 
     mapping(address => bytes32) public commitmentHashes;
     mapping(address => bytes32) public shareHashes;
@@ -116,7 +116,6 @@ contract ZKDKG {
         keyVerifier = KeyVerifier(_keyVerifier);
 
         noParticipants = _noParticipants;
-        remainingParticipants = _noParticipants;
         minimumThreshold = _minimumThreshold;
         userThreshold = _userThreshold;
         periodLength = _periodLength;
@@ -208,7 +207,7 @@ contract ZKDKG {
         emit DisputeShare(disputerIndex, disputeeIndex);
     }
 
-    function defendShare(ShareVerifier.Proof calldata proof) external registered {
+    function defendShare(ShareVerifier.Proof calldata proof) external {
         Dispute memory dispute = disputes[msg.sender];
 
         require(isDisputed(dispute), "not being disputed");
@@ -294,33 +293,51 @@ contract ZKDKG {
     function payNodes() private {}
 
     function reset() private {
-        for (uint i = 0; i < addresses.length; i++) {
-            address addr = addresses[i];
+
+        // Exclude disqualified participants from next round, update indices
+        for (uint i = 0; i < disqualified.length; i++) {
+            address addr = disqualified[i];
+            uint16 index = participants[addr].index;
 
             delete participants[addr];
             delete shareHashes[addr];
             delete commitmentHashes[addr];
-            delete disputes[addr];
+
+            if (index != addresses.length) {
+                Participant memory lastParticipant = participants[addresses[addresses.length - 1]];
+                addresses[index - 1] = addresses[addresses.length - 1];
+                lastParticipant.index = index;
+            }
+            addresses.pop();
         }
 
-        delete addresses;
+        for (uint i = 0; i < addresses.length; i++) {
+            address addr = addresses[i];
+
+            delete shareHashes[addr];
+            delete commitmentHashes[addr];
+        }
+
+        delete disqualified;
         delete disputed;
         delete firstCoefficients;
         delete noBroadcasts;
 
         phase = Phase.REGISTER;
-        remainingParticipants = noParticipants;
 
         emit Reset();
     }
 
-    function excludeNode(uint16 index) internal {
+    function excludeNode(uint16 index) private {
+        address addr = addresses[index - 1];
+
         firstCoefficients[index - 1] = INFINITY;
-        delete participants[addresses[index - 1]];
+        disqualified.push(addr);
+        delete disputes[addr];
 
         emit Exclusion(index);
 
-        if (--remainingParticipants < userThreshold) {
+        if (noParticipants - disqualified.length < userThreshold) {
             emit Abortion();
         }
     }
@@ -333,7 +350,7 @@ contract ZKDKG {
         return indices;
     }
 
-    function removeExpiredDisputes() internal {
+    function removeExpiredDisputes() private {
         for (uint16 i = 0; i < disputed.length; i++) {
             excludeNode(participants[disputed[i]].index);
         }
@@ -343,7 +360,7 @@ contract ZKDKG {
     /// @param x x coordinate
     /// @param y y coordinate
     /// @return true if (x,y) is on the curve, false otherwise
-    function isOnCurve(uint x, uint y) internal pure returns (bool) {
+    function isOnCurve(uint x, uint y) private pure returns (bool) {
         if (x >= FIELD_ORDER || y >= FIELD_ORDER) {
             return false;
         }
@@ -359,7 +376,7 @@ contract ZKDKG {
         return lhs == rhs;
     }
 
-    function isPublicKeyValid() internal view returns (bool) {
+    function isPublicKeyValid() private view returns (bool) {
         uint[2] memory pk = participants[msg.sender].publicKey;
 
         return isOnCurve(pk[0], pk[1]);
@@ -371,7 +388,7 @@ contract ZKDKG {
         return index != 0 && addresses[index - 1] == _addr;
     }
 
-    function isDisputed(Dispute memory dispute) internal pure returns (bool) {
+    function isDisputed(Dispute memory dispute) private pure returns (bool) {
         return dispute.disputeeIndex != 0;
     }
 
@@ -383,12 +400,12 @@ contract ZKDKG {
         return results;
     }
 
-    function truncateHash(bytes32 _hash) internal pure returns (uint) {
+    function truncateHash(bytes32 _hash) private pure returns (uint) {
         // Truncate the hash s.t. its value range is limited to exactly all field elements
         return uint(_hash) % FIELD_ORDER;
     }
 
-    function findDisputeIndex(address addr) internal view returns (uint) {
+    function findDisputeIndex(address addr) private view returns (uint) {
         for (uint i = 0; i < disputed.length; i++) {
             if (disputed[i] == addr) {
                 return i;
