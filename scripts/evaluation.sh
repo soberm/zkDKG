@@ -68,7 +68,7 @@ main() {
         fi
 
         for ((repetition = 1; repetition <= repetitions; repetition++)); do
-            echo "Starting to measure runtime for run no. $repetition for $participants participants"
+            echo "Starting to measure stats for run no. $repetition/$repetitions for $participants participants"
 
             if ! $generateOnly; then
                 npx hardhat launch $participants > "$log" &
