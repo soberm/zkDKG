@@ -12,6 +12,7 @@ contract ZKDKG {
     uint16 public immutable minimumThreshold;
     uint16 public immutable userThreshold;
     uint16 public immutable periodLength;
+    uint16 public remainingParticipants;
 
     Phase public phase;
     uint64 public phaseEnd;
@@ -115,6 +116,7 @@ contract ZKDKG {
         keyVerifier = KeyVerifier(_keyVerifier);
 
         noParticipants = _noParticipants;
+        remainingParticipants = _noParticipants;
         minimumThreshold = _minimumThreshold;
         userThreshold = _userThreshold;
         periodLength = _periodLength;
@@ -154,7 +156,7 @@ contract ZKDKG {
         require(phase == Phase.BROADCAST_SUBMIT, "broadcast period has not started yet");
         require(block.timestamp <= phaseEnd, "broadcast period has expired");
         require(commitmentHashes[msg.sender] == 0, "already broadcasted before");
-        require(shares.length == addresses.length - 1, "invalid number of shares");
+        require(shares.length == noParticipants - 1, "invalid number of shares");
         require(commitments.length == minimumThreshold, "invalid number of commitments");
 
         uint16 index = participants[msg.sender].index;
@@ -307,6 +309,7 @@ contract ZKDKG {
         delete noBroadcasts;
 
         phase = Phase.REGISTER;
+        remainingParticipants = noParticipants;
 
         emit Reset();
     }
@@ -317,7 +320,7 @@ contract ZKDKG {
 
         emit Exclusion(index);
 
-        if (participantsCount() < userThreshold) {
+        if (--remainingParticipants < userThreshold) {
             emit Abortion();
         }
     }
@@ -360,16 +363,6 @@ contract ZKDKG {
         uint[2] memory pk = participants[msg.sender].publicKey;
 
         return isOnCurve(pk[0], pk[1]);
-    }
-
-    function participantsCount() internal view returns (uint) {
-        uint count = 0;
-        for (uint i = 0; i < addresses.length; i++) {
-            if (participants[addresses[i]].index != 0) {
-                count++;
-            }
-        }
-        return count;
     }
 
     function isRegistered(address _addr) public view returns (bool) {
