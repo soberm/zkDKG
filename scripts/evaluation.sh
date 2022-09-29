@@ -21,6 +21,7 @@ main() {
     mkdir -p "$buildRoot"
 
     if ! $generateOnly; then
+        npx hardhat compile
         (cd ./dkg/; go build -o "$buildRoot" ./cmd/full_node)
     fi
 
