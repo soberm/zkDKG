@@ -42,7 +42,7 @@ for name in ${!inputs[@]}; do
     if [[ -f $checksumFile ]] && $(sha1sum -c --status "$checksumFile"); then
         echo "Build files for $name are up-to-date, skipping compilation"
     else
-        docker run --mount type=bind,source="$rootDir"/zk,target=/home/zokrates/src --mount type=bind,source="$buildDir",target=/home/zokrates/build \
+        docker run --user=$(id -u):$(id -g) --mount type=bind,source="$rootDir"/zk,target=/home/zokrates/src --mount type=bind,source="$buildDir",target=/home/zokrates/build \
             zokrates/zokrates:$zokratesTag /bin/bash -c "
                 zokrates compile -i src/$name.gen -s build/abi.json -o build/out -r /dev/null &&
                 zokrates setup -i build/out --proving-key-path build/proving.key --verification-key-path build/verification.key &&

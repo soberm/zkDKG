@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"os/user"
 	"path"
 	"strings"
 
@@ -63,8 +64,15 @@ func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args [
 		path.Join(basePath, "abi.json"),
 		"-a",
 	}
+
+	user, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+
 	resp, err := p.dc.ContainerCreate(ctx, &container.Config{
 		Image: zokratesImage,
+		User: fmt.Sprintf("%s:%s", user.Uid, user.Gid),
 		Cmd:   append(cmd, a...),
 	}, &container.HostConfig{
 		Binds: []string{
@@ -101,9 +109,14 @@ func (p *Prover) ComputeWitness(ctx context.Context, proofType ProofType, args [
 
 func (p *Prover) GenerateProof(ctx context.Context, proofType ProofType) (*Proof, error) {
 	basePath := path.Join("./build", string(proofType))
+	user, err := user.Current()
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
 
 	resp, err := p.dc.ContainerCreate(ctx, &container.Config{
 		Image: zokratesImage,
+		User: fmt.Sprintf("%s:%s", user.Uid, user.Gid),
 		Cmd: []string{
 			"zokrates",
 			"generate-proof",
