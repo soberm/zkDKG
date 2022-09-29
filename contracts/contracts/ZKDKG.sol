@@ -333,7 +333,6 @@ contract ZKDKG {
 
         firstCoefficients[index - 1] = INFINITY;
         disqualified.push(addr);
-        delete disputes[addr];
 
         emit Exclusion(index);
 
@@ -352,7 +351,9 @@ contract ZKDKG {
 
     function removeExpiredDisputes() private {
         for (uint16 i = 0; i < disputed.length; i++) {
-            excludeNode(participants[disputed[i]].index);
+            address addr = disputed[i];
+            excludeNode(participants[addr].index);
+            delete disputes[addr];
         }
     }
 
