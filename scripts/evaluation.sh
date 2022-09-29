@@ -20,11 +20,6 @@ main() {
 
     mkdir -p "$buildRoot"
 
-    if ! $generateOnly; then
-        npx hardhat compile
-        (cd ./dkg/; go build -o "$buildRoot" ./cmd/full_node)
-    fi
-
     docker run \
     --volume=/:/rootfs:ro \
     --volume=/var/run:/var/run:rw \
@@ -49,6 +44,11 @@ main() {
     for participants in ${participantsSizes[@]}; do
 
         ./scripts/build.sh $participants
+
+        if ! $generateOnly; then
+            npx hardhat compile
+            (cd ./dkg/; go build -o "$buildRoot" ./cmd/full_node)
+        fi
 
         buildDir="$buildRoot"/$participants
         containerPipe="$buildDir"/container_pipe
