@@ -130,15 +130,8 @@ contract ZKDKG {
 
     function register(uint[2] calldata publicKey) public payable {
         require(msg.value == STAKE, "value too low");
-
-        if (phase == Phase.REGISTER) {
-            require(!isRegistered(msg.sender), "already registered");
-        } else if (phase == Phase.BROADCAST_DISPUTE) {
-            require(block.timestamp > phaseEnd, "dispute period still ongoing");
-            reset();
-        } else {
-            revert("registration phase is over");
-        }
+        require(phase == Phase.REGISTER, "registration phase is over");
+        require(!isRegistered(msg.sender), "already registered");
 
         addresses.push(msg.sender);
         participants[msg.sender] = Participant(uint16(addresses.length), publicKey);
