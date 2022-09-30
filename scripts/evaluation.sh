@@ -115,7 +115,7 @@ main() {
             done
 
             if ! $generateOnly; then
-                kill $nodePid
+                kill -- -$nodePid
                 unset nodePid
             fi
         done
