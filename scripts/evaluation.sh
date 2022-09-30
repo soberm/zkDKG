@@ -5,22 +5,15 @@ cd "$(dirname $0)"/.. || exit 1
 generateOnly=false
 root="$(pwd)"
 
-declare cadvisorId
-declare nodePid
 declare -A goPids=()
-
-trap cleanup EXIT
 
 main() {
     parse_input "$@"
 
     buildRoot="$root"/build
-    cidFile="$buildRoot"/cid
     cadvisorVer=v0.44.0
 
     mkdir -p "$buildRoot"
-
-    rm -f "$cidFile"
 
     docker run \
     --volume=/:/rootfs:ro \
@@ -28,19 +21,12 @@ main() {
     --volume=/sys:/sys:ro \
     --volume=/var/lib/docker/:/var/lib/docker:ro \
     --publish=8080:8080 \
-    --cidfile="$cidFile" \
     gcr.io/cadvisor/cadvisor:$cadvisorVer \
     --docker_only=true \
     --disable_root_cgroup_stats=true \
     --storage_driver=stdout \
     --allow_dynamic_housekeeping=false \
     &> "$buildRoot"/cadvisor.log &
-
-    until [[ -f $cidFile ]]; do
-        sleep 1
-    done
-
-    cadvisorId=$(<"$cidFile")
 
     for participants in ${participantsSizes[@]}; do
 
@@ -74,7 +60,6 @@ main() {
 
             if ! $generateOnly; then
                 npx hardhat launch $participants > "$log" &
-                nodePid=$!
 
                 # Retrieve the private keys for the accounts from the log of the Hardhat node
                 ethPrivs=( $(tail -f "$log" | awk 'BEGIN{i=0; ORS=" "} match($0, /Private Key: 0x([[:alnum:]]+)/, res){print res[1]; if (++i == n) exit}' n=$participants) )
@@ -116,8 +101,7 @@ main() {
             done
 
             if ! $generateOnly; then
-                kill -- -$nodePid
-                unset nodePid
+                kill $(lsof -ti tcp:8545) # Kill the hardhat process
             fi
         done
 
@@ -171,16 +155,6 @@ generate_config() {
         \"ContractAddress\":    \"0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0\",
         \"MountSource\":        \"$(readlink -e ./build/$2/zk)\"
     }"
-}
-
-cleanup() {
-    if [[ -n $nodePid ]]; then
-        kill $nodePid
-    fi
-
-    if [[ -n $cadvisorId ]]; then
-        docker kill $cadvisorId > /dev/null
-    fi
 }
 
 usage() {
