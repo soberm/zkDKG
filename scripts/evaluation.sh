@@ -20,6 +20,8 @@ main() {
 
     mkdir -p "$buildRoot"
 
+    rm -f "$cidFile"
+
     docker run \
     --volume=/:/rootfs:ro \
     --volume=/var/run:/var/run:rw \
@@ -39,7 +41,6 @@ main() {
     done
 
     cadvisorId=$(<"$cidFile")
-    rm "$cidFile"
 
     for participants in ${participantsSizes[@]}; do
 
