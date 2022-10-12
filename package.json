@@ -1,8 +1,14 @@
 {
+  "scripts": {
+    "postinstall": "patch-package"
+  },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.4",
     "hardhat": "^2.9.3",
     "hardhat-abi-exporter": "^2.9.0",
     "ts-node": "^10.8.1"
+  },
+  "dependencies": {
+    "patch-package": "^6.4.7"
   }
 }
