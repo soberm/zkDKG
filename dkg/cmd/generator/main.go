@@ -68,7 +68,7 @@ func main() {
 }
 
 func measurePolyEval(prover *dkg.Prover, participants int, suite *curve25519.SuiteCurve25519, privateKey string) error {
-	threshold := (participants + 1) / 2
+	threshold := participants / 2 + 1
 	args := make([]*big.Int, 0)
 	pointsHashInput := make([]byte, 0)
 

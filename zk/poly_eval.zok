@@ -13,7 +13,7 @@ import "utils/pack/bool/pack256";
 import "utils/pack/bool/unpack256";
 
 // const u32 PARTICIPANTS = (To be filled in by the build script)
-const u32 N = (PARTICIPANTS + 1) / 2;
+const u32 N = PARTICIPANTS / 2 + 1;
 const u32 N_TIMES_32 = N * 32;
 
 def computeSharedKey(field secretKey, field[2] pubKey, field[N][2] commits) -> field {

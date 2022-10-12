@@ -105,7 +105,7 @@ contract ZKDKG {
         uint16 _userThreshold,
         uint16 _periodLength
     ) {
-        uint16 _minimumThreshold = (_noParticipants + 1) / 2;
+        uint16 _minimumThreshold = _noParticipants / 2 + 1;
 
         require(
             _userThreshold >= _minimumThreshold && _userThreshold <= _noParticipants,
