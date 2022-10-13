@@ -51,7 +51,7 @@ main() {
 
             mkdir -p "$buildDir"/nodes
 
-            npx ts-node ./scripts/collectStats.ts "$containerPipe" "$buildRoot"/cadvisor.log "$log" $repetitions > "$buildDir"/report.csv &
+            npx ts-node ./scripts/collectStats.ts $participants $repetitions &
             scriptPid=$!
         fi
 
