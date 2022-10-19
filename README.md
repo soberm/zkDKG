@@ -33,6 +33,8 @@ After the successful defense, another ZK proof, confirming the correct calculati
 to run the above described protocol with 4,8 and 16 participants, each being repeated 5 times.
 The gas costs of the smart contract transactions and the runtime and memory usage of the ZK proof generations will be written to `build/$participants/report.csv`.
 
+You can also supply the `--generate-only` flag to the script, which will only generate the inputs required for the computation of the proofs, without smart contract interaction.
+
 ## Troubleshooting
 
 If you are getting TCP timeouts in Go when running the evaluation scripts (especially for a higher amount of participants), increase the values of either [wsPingInterval](https://github.com/ethereum/go-ethereum/blob/69568c554880b3567bace64f8848ff1be27d084d/rpc/websocket.go#L38) and / or [wsPongTimeout](https://github.com/ethereum/go-ethereum/blob/69568c554880b3567bace64f8848ff1be27d084d/rpc/websocket.go#L40).
