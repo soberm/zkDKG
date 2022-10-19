@@ -113,13 +113,12 @@ func measurePolyEval(prover *dkg.Prover, participants int, suite *curve25519.Sui
 
 	hashInput = append(hashInput, pointsHash...)
 
-	pubProoferBin, _ := pubProofer.MarshalBinary()
-	hashInput = append(hashInput, pubProoferBin...)
-
-	pubDisputerBin, _ := pubDisputer.MarshalBinary()
-	hashInput = append(hashInput, pubDisputerBin...)
-
 	buf := make([]byte, 32)
+
+	hashInput = append(hashInput, pubProoferX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubProoferY.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubDisputerX.V.FillBytes(buf)...)
+	hashInput = append(hashInput, pubDisputerY.V.FillBytes(buf)...)
 
 	hashInput = append(hashInput, index.FillBytes(buf)...)
 	hashInput = append(hashInput, shareBig.FillBytes(buf)...)

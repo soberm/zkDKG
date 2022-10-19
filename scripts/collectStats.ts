@@ -10,13 +10,23 @@ if (args.some(arg => typeof arg === "undefined")) {
     process.exit(1);
 }
 
-const [participants, repetitions] = args;
+const [generateOnlyStr, participants, repetitions] = args;
+
+const generateOnly = generateOnlyStr === "true";
 
 const dir = path.resolve(__dirname, `../build/${participants}`);
 
 (async() => {
     const csv = fs.createWriteStream(path.resolve(dir, "report.csv"));
-    csv.write(`run,gas_share,gas_dispute,gas_justify,gas_derive,time_in_s_justify,memory_in_mb_justify,time_in_s_derive,memory_in_mb_derive${EOL}`);
+    const columns = ["run"];
+
+    if (!generateOnly) {
+        columns.push("gas_share", "gas_dispute", "gas_justify", "gas_derive");
+    }
+
+    columns.push("time_in_s_justify", "memory_in_mb_justify", "time_in_s_derive", "memory_in_mb_derive");
+
+    csv.write(`${columns.join(",")}${EOL}`);
 
     for (let repetition = 1; repetition <= Number(repetitions); repetition++) {
 
@@ -24,71 +34,78 @@ const dir = path.resolve(__dirname, `../build/${participants}`);
         const dockerStats: [number, number][] = [];
 
         const pipe = (await (fsProm.open(path.resolve(dir, "container_pipe"), fs.constants.O_RDONLY))).createReadStream();
-        pipe.on("data", async dockerId => {
+
+        await new Promise<void>(resolve => {
+            pipe.on("data", async dockerId => {
+                const rl = readline.createInterface({
+                    "input": (await fsProm.open(path.resolve(dir, "../cadvisor.log"))).createReadStream(),
+                });
+                const regex = new RegExp(`^cName=${dockerId.toString().trim()}(?=.*timestamp=(\\d+))(?=.*memory_usage=(\\d+))`);
+                
+                let startTimestamp = "0";
+                let endTimestamp = "0";
+                let maxMemUsage = 0;
         
-            const rl = readline.createInterface({
-                "input": (await fsProm.open(path.resolve(dir, "../cadvisor.log"))).createReadStream(),
-            });
-            const regex = new RegExp(`^cName=${dockerId.toString().trim()}(?=.*timestamp=(\\d+))(?=.*memory_usage=(\\d+))`);
+                rl.on("line", line => {
+                    const result = regex.exec(line);
+                    if (result !== null) {
+                        const [, timestamp, memUsage] = result;
             
-            let startTimestamp = "0";
-            let endTimestamp = "0";
-            let maxMemUsage = 0;
-    
-            rl.on("line", line => {
-                const result = regex.exec(line);
-                if (result !== null) {
-                    const [, timestamp, memUsage] = result;
-        
-                    if (startTimestamp === "0") {
-                        startTimestamp = timestamp;
+                        if (startTimestamp === "0") {
+                            startTimestamp = timestamp;
+                        }
+            
+                        endTimestamp = timestamp;
+            
+                        maxMemUsage = Math.max(maxMemUsage, Number(memUsage));
                     }
+                });
         
-                    endTimestamp = timestamp;
+                await events.once(rl, "close");
         
-                    maxMemUsage = Math.max(maxMemUsage, Number(memUsage));
+                const time = Number((BigInt(endTimestamp) - BigInt(startTimestamp)) / (10n ** 9n));
+        
+                dockerStats[containerIndex++] = [time, Math.round(maxMemUsage / (10 ** 6))];
+
+                // We collect data from 2 containers
+                if (containerIndex == 2) {
+                    resolve();
                 }
             });
-    
-            await events.once(rl, "close");
-    
-            const time = Number((BigInt(endTimestamp) - BigInt(startTimestamp)) / (10n ** 9n));
-    
-            dockerStats[containerIndex++] = [time, Math.round(maxMemUsage / (10 ** 6))];
         });
+        
+        const values = [repetition];
 
-        await events.once(pipe, "close");
-        
-        const data = (await fsProm.readFile(path.resolve(dir, "hardhat.log"))).toString();
-        const regex = /eth_sendRawTransaction.*?Contract call:.*?#(.*?)$.*?Gas used:\s*(\d+)/gms;
-        
-        const gasCosts: Map<string, number[]> = new Map();
+        if (!generateOnly) {
+            const data = (await fsProm.readFile(path.resolve(dir, "hardhat.log"))).toString();
+            const regex = /eth_sendRawTransaction.*?Contract call:.*?#(.*?)$.*?Gas used:\s*(\d+)/gms;
+            
+            const gasCosts: Map<string, number[]> = new Map();
 
-        let result;
-        while ((result = regex.exec(data)) !== null) {
-            const method = result[1];
-            const costs = Number(result[2]);
-            const entry = gasCosts.get(method);
-        
-            if (typeof entry !== "undefined") {
-                entry.push(costs);
-            } else {
-                gasCosts.set(method, [costs]);
+            let result;
+            while ((result = regex.exec(data)) !== null) {
+                const method = result[1];
+                const costs = Number(result[2]);
+                const entry = gasCosts.get(method);
+            
+                if (typeof entry !== "undefined") {
+                    entry.push(costs);
+                } else {
+                    gasCosts.set(method, [costs]);
+                }
             }
+
+            const averages = ["broadcastShares", "disputeShare", "defendShare", "submitPublicKey"]
+                .map(method => average(gasCosts.get(method)))
+
+            values.push(...averages);
         }
 
-        const [timeJustify, maxMemUsageJustify] = dockerStats[0];
-        const [timeReconstruct, maxMemUsageReconstruct] = dockerStats[1];
+        values.push(...dockerStats[0], ...dockerStats[1]);
 
-        csv.write(`${repetition},${getGastCostsCsv(gasCosts)},${timeJustify},${maxMemUsageJustify},${timeReconstruct},${maxMemUsageReconstruct}${EOL}`);
+        csv.write(`${values.join(",")}${EOL}`);
     }
 })();
-
-function getGastCostsCsv(costs: Map<string, number[]>) {
-    return ["broadcastShares", "disputeShare", "defendShare", "submitPublicKey"]
-        .map(method => average(costs.get(method)))
-        .join(",");
-}
 
 function average(arr: number[] = []): number {
     return Math.round(arr.reduce((p, c) => p + c, 0) / arr.length);

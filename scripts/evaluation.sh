@@ -50,10 +50,10 @@ main() {
             log="$buildDir"/hardhat.log
 
             mkdir -p "$buildDir"/nodes
-
-            npx ts-node ./scripts/collectStats.ts $participants $repetitions &
-            scriptPid=$!
         fi
+
+        npx ts-node ./scripts/collectStats.ts $generateOnly $participants $repetitions &
+        scriptPid=$!
 
         for ((repetition = 1; repetition <= repetitions; repetition++)); do
             echo "Starting to measure stats for run no. $repetition/$repetitions for $participants participants"
@@ -70,8 +70,11 @@ main() {
             local goPids=()
 
             if $generateOnly; then
-                generate_config 1 $participants | go run ./dkg/cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" |& tee "$buildDir"/generator.log &
+                config=$(generate_config 1 $participants)
+                cd ./dkg/
+                go run ./cmd/generator -c /dev/stdin --participants $participants --id-pipe="$containerPipe" <<< "$config" |& tee "$buildDir"/generator.log &
                 goPids[0]=$!
+                cd ../
             else
                 for ((i = 1; i <= participants; i++)); do
                     flags=()
@@ -105,10 +108,7 @@ main() {
             fi
         done
 
-        if ! $generateOnly; then
-            wait $scriptPid
-            unset scriptPid
-        fi
+        wait $scriptPid
     done
 }
 
