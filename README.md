@@ -1,5 +1,3 @@
-![CDL-BOT Logo](https://www.cdl-bot.at/theme/images/logo.png)
-
 # zkDKG
 
 > Distributed Key Generation with Smart Contracts using zk-SNARKs
@@ -41,7 +39,7 @@ If you are getting TCP timeouts in Go when running the evaluation scripts (espec
 
 ## Contributing
 
-This project is a research prototype. We welcome anyone to contribute. File a bug report or submit feature requests through the [issue tracker](https://github.com/soberm/zkDKG/issues). If you want to contribute feel free to submit a pull request.
+This project is a research prototype. We welcome anyone to contribute. File a bug report or submit feature requests through the issue tracker. If you want to contribute feel free to submit a pull request.
 
 ## Licensing
 
