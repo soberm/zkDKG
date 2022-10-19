@@ -158,7 +158,7 @@ generate_config() {
 }
 
 usage() {
-    echo "Usage: run [ -g | --generate-only ] participant-range [ repetitions ]"
+    echo "Usage: evaluation [ -g | --generate-only ] participant-range [ repetitions ]"
     exit 2
 }
 
